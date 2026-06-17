@@ -11,6 +11,11 @@ import { languageIdForFile } from "./lib/language";
 import { basename } from "./lib/paths";
 import "./App.css";
 
+function errorMessage(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
+  return String(e);
+}
+
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -27,9 +32,18 @@ export default function App() {
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
 
+  const persistDoc = (p: string, doc: string) =>
+    setDocs((d) => ({ ...d, [p]: doc }));
+
   async function openFile(path: string) {
     setNotice(null);
-    const content = await readFile(path);
+    let content;
+    try {
+      content = await readFile(path);
+    } catch (e) {
+      setNotice(`Failed to open ${basename(path)}: ${errorMessage(e)}`);
+      return;
+    }
     if (content.kind === "binary") {
       setNotice(`Cannot preview binary file: ${basename(path)}`);
       return;
@@ -59,13 +73,24 @@ export default function App() {
       closeTabsUnder(change.path);
     } else if (change.type === "rename") {
       renameTab(change.from, change.to, basename(change.to));
+      setDocs((d) => {
+        if (!(change.from in d)) return d;
+        const next = { ...d };
+        next[change.to] = next[change.from];
+        delete next[change.from];
+        return next;
+      });
     }
   }
 
   async function handleSave(path: string, doc: string) {
-    await writeFile(path, doc);
-    setDocs((d) => ({ ...d, [path]: doc }));
-    setDirty(path, false);
+    try {
+      await writeFile(path, doc);
+      setDocs((d) => ({ ...d, [path]: doc }));
+      setDirty(path, false);
+    } catch (e) {
+      setNotice(`Failed to save ${basename(path)}: ${errorMessage(e)}`);
+    }
   }
 
   return (
@@ -95,6 +120,7 @@ export default function App() {
             initialDoc={docs[activeTab.path] ?? ""}
             onChange={() => setDirty(activeTab.path, true)}
             onSave={(doc) => handleSave(activeTab.path, doc)}
+            onPersist={persistDoc}
           />
         ) : (
           <div className="empty">No file open</div>

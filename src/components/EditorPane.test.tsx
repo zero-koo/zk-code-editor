@@ -38,4 +38,23 @@ describe("EditorPane", () => {
     await userEvent.type(editable, "a");
     expect(onChange).toHaveBeenCalled();
   });
+
+  it("calls onPersist with the current doc when unmounted", async () => {
+    const onPersist = vi.fn();
+    const { unmount, container } = render(
+      <EditorPane
+        path="/p/a.ts"
+        languageId="typescript"
+        initialDoc="start"
+        onChange={() => {}}
+        onSave={() => {}}
+        onPersist={onPersist}
+      />
+    );
+    const { EditorView } = await import("@codemirror/view");
+    const view = EditorView.findFromDOM(container.querySelector(".cm-editor") as HTMLElement)!;
+    view.dispatch({ changes: { from: 5, insert: "X" } }); // "startX"
+    unmount();
+    expect(onPersist).toHaveBeenCalledWith("/p/a.ts", "startX");
+  });
 });

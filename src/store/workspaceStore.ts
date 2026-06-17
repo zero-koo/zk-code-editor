@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Tab } from "../api/types";
+import { languageIdForFile } from "../lib/language";
 
 interface WorkspaceState {
   root: string | null;
@@ -69,7 +70,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   renameTab: (oldPath, newPath, newName) =>
     set((s) => ({
       tabs: s.tabs.map((t) =>
-        t.path === oldPath ? { ...t, path: newPath, name: newName } : t
+        t.path === oldPath
+          ? { ...t, path: newPath, name: newName, languageId: languageIdForFile(newName) }
+          : t
       ),
       activeTabPath: s.activeTabPath === oldPath ? newPath : s.activeTabPath,
     })),

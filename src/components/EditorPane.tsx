@@ -11,13 +11,14 @@ interface Props {
   initialDoc: string;
   onChange: (doc: string) => void;
   onSave: (doc: string) => void;
+  onPersist?: (path: string, doc: string) => void;
 }
 
-export function EditorPane({ path, languageId, initialDoc, onChange, onSave }: Props) {
+export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onPersist }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const cbRef = useRef({ onChange, onSave });
-  cbRef.current = { onChange, onSave };
+  const cbRef = useRef({ onChange, onSave, onPersist });
+  cbRef.current = { onChange, onSave, onPersist };
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -47,7 +48,9 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave }: P
     });
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+    const p = path;
     return () => {
+      cbRef.current.onPersist?.(p, view.state.doc.toString());
       view.destroy();
       viewRef.current = null;
     };
