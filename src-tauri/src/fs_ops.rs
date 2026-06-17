@@ -119,6 +119,22 @@ pub fn create_dir(path: String, ws: State<Workspace>) -> Result<(), AppError> {
     create_dir_impl(&root, &path)
 }
 
+pub fn rename_impl(root: &Path, from: &str, to: &str) -> Result<(), AppError> {
+    let from = resolve_in_workspace(root, from)?;
+    let to = resolve_in_workspace(root, to)?;
+    if to.exists() {
+        return Err(AppError::new(ErrorCode::Conflict, "target already exists"));
+    }
+    std::fs::rename(&from, &to)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rename(from: String, to: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let root = ws.root().ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    rename_impl(&root, &from, &to)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,5 +210,26 @@ mod tests {
         let p = tmp.path().join("sub");
         create_dir_impl(tmp.path(), p.to_str().unwrap()).unwrap();
         assert!(p.is_dir());
+    }
+
+    #[test]
+    fn renames_file() {
+        let tmp = tempdir().unwrap();
+        let from = tmp.path().join("a.txt");
+        let to = tmp.path().join("b.txt");
+        fs::write(&from, "x").unwrap();
+        rename_impl(tmp.path(), from.to_str().unwrap(), to.to_str().unwrap()).unwrap();
+        assert!(!from.exists() && to.exists());
+    }
+
+    #[test]
+    fn rename_rejects_existing_target() {
+        let tmp = tempdir().unwrap();
+        let from = tmp.path().join("a.txt");
+        let to = tmp.path().join("b.txt");
+        fs::write(&from, "x").unwrap();
+        fs::write(&to, "y").unwrap();
+        let err = rename_impl(tmp.path(), from.to_str().unwrap(), to.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Conflict);
     }
 }
