@@ -125,13 +125,16 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
       <ActivityBar activeView={activeView} sidebarVisible={sidebarVisible} onActivate={activate} />
       {sidebarVisible && (
-        <div className="flex">
-          {activeView === "explorer" ? (
+        <>
+          {/* Both panels stay mounted so their state (results, expanded tree)
+              persists across view switches; only the active one is shown. */}
+          <div className={activeView === "explorer" ? "flex" : "hidden"}>
             <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
-          ) : (
+          </div>
+          <div className={activeView === "search" ? "flex" : "hidden"}>
             <SearchPanel onOpenMatch={openAt} />
-          )}
-        </div>
+          </div>
+        </>
       )}
       <div className="flex-1 min-w-0 flex flex-col bg-bg-2">
         <TabBar
