@@ -152,6 +152,16 @@ pub fn delete(path: String, ws: State<Workspace>) -> Result<(), AppError> {
     delete_impl(&root, &path)
 }
 
+#[tauri::command]
+pub fn set_workspace_root(path: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let p = std::path::PathBuf::from(&path);
+    if !p.is_dir() {
+        return Err(AppError::new(ErrorCode::NotFound, "not a directory"));
+    }
+    ws.set_root(p);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
