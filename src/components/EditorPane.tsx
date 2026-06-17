@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState, Compartment, EditorSelection } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { zkTheme } from "../lib/editorTheme";
@@ -12,9 +12,10 @@ interface Props {
   onChange: (doc: string) => void;
   onSave: (doc: string) => void;
   onPersist?: (path: string, doc: string) => void;
+  reveal?: { line: number; matchStart: number; matchEnd: number; seq: number };
 }
 
-export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onPersist }: Props) {
+export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onPersist, reveal }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const cbRef = useRef({ onChange, onSave, onPersist });
@@ -56,6 +57,22 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onP
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !reveal) return;
+    const doc = view.state.doc;
+    const line = Math.min(Math.max(reveal.line, 1), doc.lines);
+    const info = doc.line(line);
+    const from = Math.min(info.from + reveal.matchStart, info.to);
+    const to = Math.min(info.from + reveal.matchEnd, info.to);
+    view.dispatch({
+      selection: EditorSelection.range(from, to),
+      effects: EditorView.scrollIntoView(from, { y: "center" }),
+    });
+    view.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal?.seq]);
 
   return <div className="editor-host" ref={hostRef} />;
 }

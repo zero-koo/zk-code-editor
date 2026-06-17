@@ -39,6 +39,35 @@ describe("EditorPane", () => {
     expect(onChange).toHaveBeenCalled();
   });
 
+  it("reveals a match: selects the range and is clamped to the doc", async () => {
+    const { container, rerender } = render(
+      <EditorPane
+        path="/p/a.ts"
+        languageId="typescript"
+        initialDoc={"line one\nline two\nline three"}
+        onChange={() => {}}
+        onSave={() => {}}
+      />
+    );
+    const { EditorView } = await import("@codemirror/view");
+    const view = EditorView.findFromDOM(container.querySelector(".cm-editor") as HTMLElement)!;
+    // reveal line 2, match offsets 5..8 ("two")
+    rerender(
+      <EditorPane
+        path="/p/a.ts"
+        languageId="typescript"
+        initialDoc={"line one\nline two\nline three"}
+        onChange={() => {}}
+        onSave={() => {}}
+        reveal={{ line: 2, matchStart: 5, matchEnd: 8, seq: 1 }}
+      />
+    );
+    const sel = view.state.selection.main;
+    const line2 = view.state.doc.line(2);
+    expect(sel.from).toBe(line2.from + 5);
+    expect(sel.to).toBe(line2.from + 8);
+  });
+
   it("calls onPersist with the current doc when unmounted", async () => {
     const onPersist = vi.fn();
     const { unmount, container } = render(
