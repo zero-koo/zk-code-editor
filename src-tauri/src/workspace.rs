@@ -17,7 +17,16 @@ impl Workspace {
 }
 
 /// Validates that `candidate` is inside the workspace `root`, returning a
-/// normalized absolute path. Rejects traversal outside the root.
+/// lexically-normalized absolute path.
+///
+/// `candidate` must be an absolute path (the frontend always passes absolute
+/// paths obtained from `read_dir`). Normalization resolves `.`/`..` textually
+/// only — it does NOT canonicalize or resolve symlinks. This is sufficient for
+/// this app's threat model (confining ops to a folder the user explicitly
+/// opened) but means a symlink planted inside the workspace could point
+/// outside it. We intentionally avoid `fs::canonicalize` here because on macOS
+/// it would rewrite paths like `/tmp` -> `/private/tmp`, breaking the match
+/// against the non-canonical paths the frontend holds.
 pub fn resolve_in_workspace(root: &Path, candidate: &str) -> Result<PathBuf, AppError> {
     let root = normalize(root);
     let candidate_path = normalize(Path::new(candidate));
