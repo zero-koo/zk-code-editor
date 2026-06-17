@@ -15,7 +15,11 @@ pub struct SearchOptions {
 pub struct LineMatch {
     pub line_number: u32,
     pub preview: String,
+    /// UTF-16 ranges INTO `preview` (display highlight). Sorted, non-overlapping,
+    /// clipped to the preview length. Use these to highlight `preview`.
     pub highlight_ranges: Vec<[u32; 2]>,
+    /// UTF-16 offsets of the first match INTO THE FULL LINE (not `preview`).
+    /// Used by the editor to select/reveal the match; do NOT slice `preview` with these.
     pub match_start: u32,
     pub match_end: u32,
 }
@@ -186,8 +190,12 @@ pub fn search_impl(root: &Path, query: &str, opts: &SearchOptions) -> SearchResp
                 let trimmed = line.strip_suffix('\n').unwrap_or(line);
                 let trimmed = trimmed.strip_suffix('\r').unwrap_or(trimmed);
                 let mut byte_ranges: Vec<(usize, usize)> = Vec::new();
+                // find_iter is infallible for RegexMatcher. Skip zero-width matches
+                // (e.g. regex `a*`, `^`, `\b`) which would produce empty highlights.
                 let _ = matcher.find_iter(trimmed.as_bytes(), |m| {
-                    byte_ranges.push((m.start(), m.end()));
+                    if m.end() > m.start() {
+                        byte_ranges.push((m.start(), m.end()));
+                    }
                     true
                 });
                 if !byte_ranges.is_empty() {
@@ -326,6 +334,19 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "stuff").unwrap();
         let resp = search_impl(tmp.path(), "   ", &opts(false, false));
         assert!(resp.files.is_empty());
+    }
+
+    #[test]
+    fn skips_zero_width_regex_matches() {
+        let tmp = tempdir().unwrap();
+        fs::write(tmp.path().join("a.txt"), "foo").unwrap();
+        // `o*` matches zero-width at several positions plus "oo"; only the non-empty one survives.
+        let resp = search_impl(tmp.path(), "o*", &opts(true, true));
+        assert_eq!(resp.files.len(), 1);
+        let m = &resp.files[0].matches[0];
+        assert_eq!(m.highlight_ranges, vec![[1, 3]]);
+        assert_eq!(m.match_start, 1);
+        assert_eq!(m.match_end, 3);
     }
 
     #[test]
