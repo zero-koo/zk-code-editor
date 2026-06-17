@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "zk-code-editor",
-        "width": 800,
-        "height": 600
+        "width": 1080,
+        "height": 720,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

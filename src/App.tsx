@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
 import type { FsChange } from "./components/FileTreeNode";
@@ -93,7 +94,9 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
+      <TitleBar title={activeTab?.name ?? null} />
+      <div className="flex flex-1 min-h-0">
       <ActivityBar
         sidebarVisible={sidebarVisible}
         onToggleSidebar={() => setSidebarVisible((v) => !v)}
@@ -167,6 +170,7 @@ export default function App() {
           path={activeTab?.path ?? null}
           languageId={activeTab?.languageId ?? null}
         />
+      </div>
       </div>
     </div>
   );
