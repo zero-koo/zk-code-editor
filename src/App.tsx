@@ -1,51 +1,97 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { ActivityBar } from "./components/ActivityBar";
+import { FileExplorer } from "./components/FileExplorer";
+import { TabBar } from "./components/TabBar";
+import { EditorPane } from "./components/EditorPane";
+import { StatusBar } from "./components/StatusBar";
+import { readFile, writeFile } from "./api/fs";
+import { useWorkspaceStore } from "./store/workspaceStore";
+import { languageIdForFile } from "./lib/language";
+import { basename } from "./lib/paths";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+export default function App() {
+  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [docs, setDocs] = useState<Record<string, string>>({});
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+  const tabs = useWorkspaceStore((s) => s.tabs);
+  const activeTabPath = useWorkspaceStore((s) => s.activeTabPath);
+  const openTab = useWorkspaceStore((s) => s.openTab);
+  const closeTab = useWorkspaceStore((s) => s.closeTab);
+  const setActive = useWorkspaceStore((s) => s.setActive);
+  const setDirty = useWorkspaceStore((s) => s.setDirty);
+
+  const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
+
+  async function openFile(path: string) {
+    setNotice(null);
+    const content = await readFile(path);
+    if (content.kind === "binary") {
+      setNotice(`Cannot preview binary file: ${basename(path)}`);
+      return;
+    }
+    if (content.kind === "too_large") {
+      setNotice(`Cannot preview file (too large): ${basename(path)}`);
+      return;
+    }
+    setDocs((d) => ({ ...d, [path]: content.text }));
+    openTab({
+      path,
+      name: basename(path),
+      languageId: languageIdForFile(path),
+      dirty: false,
+    });
+  }
+
+  function handleClose(path: string) {
+    const tab = tabs.find((t) => t.path === path);
+    if (tab?.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
+    closeTab(path);
+  }
+
+  async function handleSave(path: string, doc: string) {
+    await writeFile(path, doc);
+    setDocs((d) => ({ ...d, [path]: doc }));
+    setDirty(path, false);
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+    <div className="app">
+      <ActivityBar
+        sidebarVisible={sidebarVisible}
+        onToggleSidebar={() => setSidebarVisible((v) => !v)}
+      />
+      {sidebarVisible && (
+        <div className="sidebar">
+          <FileExplorer onOpenFile={openFile} />
+        </div>
+      )}
+      <div className="editor-area">
+        <TabBar
+          tabs={tabs}
+          activePath={activeTabPath}
+          onSelect={setActive}
+          onClose={handleClose}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        {notice && <div className="notice">{notice}</div>}
+        {activeTab ? (
+          <EditorPane
+            key={activeTab.path}
+            path={activeTab.path}
+            languageId={activeTab.languageId}
+            initialDoc={docs[activeTab.path] ?? ""}
+            onChange={() => setDirty(activeTab.path, true)}
+            onSave={(doc) => handleSave(activeTab.path, doc)}
+          />
+        ) : (
+          <div className="empty">No file open</div>
+        )}
+        <StatusBar
+          path={activeTab?.path ?? null}
+          languageId={activeTab?.languageId ?? null}
+        />
+      </div>
+    </div>
   );
 }
-
-export default App;
