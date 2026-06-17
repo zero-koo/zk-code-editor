@@ -1,5 +1,6 @@
 mod error;
 mod fs_ops;
+mod search;
 mod workspace;
 
 use workspace::Workspace;
