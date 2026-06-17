@@ -135,6 +135,23 @@ pub fn rename(from: String, to: String, ws: State<Workspace>) -> Result<(), AppE
     rename_impl(&root, &from, &to)
 }
 
+pub fn delete_impl(root: &Path, path: &str) -> Result<(), AppError> {
+    let target = resolve_in_workspace(root, path)?;
+    let meta = std::fs::metadata(&target)?;
+    if meta.is_dir() {
+        std::fs::remove_dir_all(&target)?;
+    } else {
+        std::fs::remove_file(&target)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete(path: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let root = ws.root().ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    delete_impl(&root, &path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +248,24 @@ mod tests {
         fs::write(&to, "y").unwrap();
         let err = rename_impl(tmp.path(), from.to_str().unwrap(), to.to_str().unwrap()).unwrap_err();
         assert_eq!(err.code, ErrorCode::Conflict);
+    }
+
+    #[test]
+    fn deletes_file() {
+        let tmp = tempdir().unwrap();
+        let p = tmp.path().join("a.txt");
+        fs::write(&p, "x").unwrap();
+        delete_impl(tmp.path(), p.to_str().unwrap()).unwrap();
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn deletes_directory_recursively() {
+        let tmp = tempdir().unwrap();
+        let d = tmp.path().join("sub");
+        fs::create_dir(&d).unwrap();
+        fs::write(d.join("a.txt"), "x").unwrap();
+        delete_impl(tmp.path(), d.to_str().unwrap()).unwrap();
+        assert!(!d.exists());
     }
 }
