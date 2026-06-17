@@ -75,6 +75,20 @@ pub fn read_file(path: String, ws: State<Workspace>) -> Result<FileContent, AppE
     read_file_impl(&root, &path)
 }
 
+pub fn write_file_impl(root: &Path, path: &str, contents: &str) -> Result<(), AppError> {
+    let file = resolve_in_workspace(root, path)?;
+    std::fs::write(&file, contents)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn write_file(path: String, contents: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let root = ws
+        .root()
+        .ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    write_file_impl(&root, &path, &contents)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +130,22 @@ mod tests {
         fs::write(tmp.path().join("b.bin"), [0u8, 1, 2, 3]).unwrap();
         let c = read_file_impl(tmp.path(), tmp.path().join("b.bin").to_str().unwrap()).unwrap();
         assert_eq!(c, FileContent::Binary);
+    }
+
+    #[test]
+    fn writes_and_creates_if_missing() {
+        let tmp = tempdir().unwrap();
+        let p = tmp.path().join("new.txt");
+        write_file_impl(tmp.path(), p.to_str().unwrap(), "data").unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "data");
+    }
+
+    #[test]
+    fn overwrites_existing() {
+        let tmp = tempdir().unwrap();
+        let p = tmp.path().join("e.txt");
+        fs::write(&p, "old").unwrap();
+        write_file_impl(tmp.path(), p.to_str().unwrap(), "new").unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "new");
     }
 }
