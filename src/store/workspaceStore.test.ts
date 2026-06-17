@@ -7,6 +7,7 @@ const reset = () =>
     tabs: [],
     activeTabPath: null,
     expandedDirs: new Set<string>(),
+    activeView: "explorer",
   });
 
 describe("workspace store", () => {
@@ -69,5 +70,11 @@ describe("workspace store", () => {
     expect(useWorkspaceStore.getState().expandedDirs.has("/p/sub")).toBe(true);
     toggleDir("/p/sub");
     expect(useWorkspaceStore.getState().expandedDirs.has("/p/sub")).toBe(false);
+  });
+
+  it("activeView defaults to explorer and can switch", () => {
+    expect(useWorkspaceStore.getState().activeView).toBe("explorer");
+    useWorkspaceStore.getState().setActiveView("search");
+    expect(useWorkspaceStore.getState().activeView).toBe("search");
   });
 });

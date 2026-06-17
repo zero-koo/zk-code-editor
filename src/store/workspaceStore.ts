@@ -7,8 +7,10 @@ interface WorkspaceState {
   tabs: Tab[];
   activeTabPath: string | null;
   expandedDirs: Set<string>;
+  activeView: "explorer" | "search";
 
   setRoot: (root: string) => void;
+  setActiveView: (view: "explorer" | "search") => void;
   openTab: (tab: Tab) => void;
   closeTab: (path: string) => void;
   closeTabsUnder: (dir: string) => void;
@@ -31,8 +33,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   tabs: [],
   activeTabPath: null,
   expandedDirs: new Set<string>(),
+  activeView: "explorer",
 
   setRoot: (root) => set({ root }),
+  setActiveView: (view) => set({ activeView: view }),
 
   openTab: (tab) =>
     set((s) => {
