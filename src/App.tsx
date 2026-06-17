@@ -9,7 +9,6 @@ import { readFile, writeFile } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
 import { basename } from "./lib/paths";
-import "./App.css";
 
 function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -94,24 +93,43 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="flex h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
       <ActivityBar
         sidebarVisible={sidebarVisible}
         onToggleSidebar={() => setSidebarVisible((v) => !v)}
       />
       {sidebarVisible && (
-        <div className="sidebar">
+        <div className="flex">
           <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
         </div>
       )}
-      <div className="editor-area">
+      <div className="flex-1 min-w-0 flex flex-col bg-bg-2">
         <TabBar
           tabs={tabs}
           activePath={activeTabPath}
           onSelect={setActive}
           onClose={handleClose}
         />
-        {notice && <div className="notice">{notice}</div>}
+        {notice && (
+          <div className="flex items-start gap-3 m-2 rounded-[11px] border border-bd-1 bg-bg-1 px-3.5 py-3 text-tx-bright text-[12.5px]">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-accent shrink-0 mt-px"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4" />
+              <path d="M12 8h.01" />
+            </svg>
+            <span>{notice}</span>
+          </div>
+        )}
         {activeTab ? (
           <EditorPane
             key={activeTab.path}
@@ -123,7 +141,27 @@ export default function App() {
             onPersist={persistDoc}
           />
         ) : (
-          <div className="empty">No file open</div>
+          <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-center">
+            <div className="w-10 h-10 rounded-[11px] bg-bg-3 text-tx-faint flex items-center justify-center">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6" />
+              </svg>
+            </div>
+            <div className="text-[13.5px] text-tx-bright font-medium">No file open</div>
+            <div className="text-xs text-tx-3">
+              Select a file in the explorer to start editing
+            </div>
+          </div>
         )}
         <StatusBar
           path={activeTab?.path ?? null}

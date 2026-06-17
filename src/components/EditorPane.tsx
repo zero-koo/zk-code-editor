@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { EditorState, Compartment } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { oneDark } from "@codemirror/theme-one-dark";
+import { zkTheme } from "../lib/editorTheme";
 import { languageExtension } from "../lib/language";
 
 interface Props {
@@ -40,7 +40,7 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onP
         keymap.of([...defaultKeymap, ...historyKeymap]),
         saveKeymap,
         language.of(languageExtension(languageId)),
-        oneDark,
+        zkTheme,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) cbRef.current.onChange(u.state.doc.toString());
         }),
