@@ -41,6 +41,40 @@ pub fn read_dir(path: String, ws: State<Workspace>) -> Result<Vec<DirEntry>, App
     read_dir_impl(&root, &path)
 }
 
+const MAX_TEXT_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "text")]
+pub enum FileContent {
+    Text(String),
+    Binary,
+    TooLarge,
+}
+
+pub fn read_file_impl(root: &Path, path: &str) -> Result<FileContent, AppError> {
+    let file = resolve_in_workspace(root, path)?;
+    let meta = std::fs::metadata(&file)?;
+    if meta.len() > MAX_TEXT_BYTES {
+        return Ok(FileContent::TooLarge);
+    }
+    let bytes = std::fs::read(&file)?;
+    if bytes.contains(&0) {
+        return Ok(FileContent::Binary);
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(FileContent::Text(text)),
+        Err(_) => Ok(FileContent::Binary),
+    }
+}
+
+#[tauri::command]
+pub fn read_file(path: String, ws: State<Workspace>) -> Result<FileContent, AppError> {
+    let root = ws
+        .root()
+        .ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    read_file_impl(&root, &path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -66,5 +100,21 @@ mod tests {
         let tmp = tempdir().unwrap();
         let err = read_dir_impl(tmp.path(), "/etc").unwrap_err();
         assert_eq!(err.code, ErrorCode::OutsideWorkspace);
+    }
+
+    #[test]
+    fn reads_text_file() {
+        let tmp = tempdir().unwrap();
+        fs::write(tmp.path().join("a.txt"), "hello").unwrap();
+        let c = read_file_impl(tmp.path(), tmp.path().join("a.txt").to_str().unwrap()).unwrap();
+        assert_eq!(c, FileContent::Text("hello".into()));
+    }
+
+    #[test]
+    fn detects_binary_via_null_byte() {
+        let tmp = tempdir().unwrap();
+        fs::write(tmp.path().join("b.bin"), [0u8, 1, 2, 3]).unwrap();
+        let c = read_file_impl(tmp.path(), tmp.path().join("b.bin").to_str().unwrap()).unwrap();
+        assert_eq!(c, FileContent::Binary);
     }
 }
