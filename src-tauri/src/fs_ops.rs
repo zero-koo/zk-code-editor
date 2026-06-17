@@ -89,6 +89,36 @@ pub fn write_file(path: String, contents: String, ws: State<Workspace>) -> Resul
     write_file_impl(&root, &path, &contents)
 }
 
+pub fn create_file_impl(root: &Path, path: &str) -> Result<(), AppError> {
+    let file = resolve_in_workspace(root, path)?;
+    if file.exists() {
+        return Err(AppError::new(ErrorCode::Conflict, "file already exists"));
+    }
+    std::fs::write(&file, "")?;
+    Ok(())
+}
+
+pub fn create_dir_impl(root: &Path, path: &str) -> Result<(), AppError> {
+    let dir = resolve_in_workspace(root, path)?;
+    if dir.exists() {
+        return Err(AppError::new(ErrorCode::Conflict, "already exists"));
+    }
+    std::fs::create_dir(&dir)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn create_file(path: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let root = ws.root().ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    create_file_impl(&root, &path)
+}
+
+#[tauri::command]
+pub fn create_dir(path: String, ws: State<Workspace>) -> Result<(), AppError> {
+    let root = ws.root().ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    create_dir_impl(&root, &path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,5 +177,22 @@ mod tests {
         fs::write(&p, "old").unwrap();
         write_file_impl(tmp.path(), p.to_str().unwrap(), "new").unwrap();
         assert_eq!(fs::read_to_string(&p).unwrap(), "new");
+    }
+
+    #[test]
+    fn create_file_rejects_existing() {
+        let tmp = tempdir().unwrap();
+        let p = tmp.path().join("x.txt");
+        fs::write(&p, "").unwrap();
+        let err = create_file_impl(tmp.path(), p.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Conflict);
+    }
+
+    #[test]
+    fn create_dir_makes_directory() {
+        let tmp = tempdir().unwrap();
+        let p = tmp.path().join("sub");
+        create_dir_impl(tmp.path(), p.to_str().unwrap()).unwrap();
+        assert!(p.is_dir());
     }
 }
