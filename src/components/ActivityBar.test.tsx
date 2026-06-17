@@ -4,15 +4,22 @@ import userEvent from "@testing-library/user-event";
 import { ActivityBar } from "./ActivityBar";
 
 describe("ActivityBar", () => {
-  it("renders the explorer toggle button", () => {
-    render(<ActivityBar sidebarVisible onToggleSidebar={() => {}} />);
+  it("renders Explorer and Search buttons", () => {
+    render(<ActivityBar activeView="explorer" sidebarVisible onActivate={() => {}} />);
     expect(screen.getByRole("button", { name: /explorer/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /search/i })).toBeInTheDocument();
   });
 
-  it("calls onToggleSidebar when clicked", async () => {
-    const onToggle = vi.fn();
-    render(<ActivityBar sidebarVisible onToggleSidebar={onToggle} />);
-    await userEvent.click(screen.getByRole("button", { name: /explorer/i }));
-    expect(onToggle).toHaveBeenCalled();
+  it("marks the active view as pressed when the sidebar is visible", () => {
+    render(<ActivityBar activeView="search" sidebarVisible onActivate={() => {}} />);
+    expect(screen.getByRole("button", { name: /search/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /explorer/i })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("calls onActivate with the clicked view", async () => {
+    const onActivate = vi.fn();
+    render(<ActivityBar activeView="explorer" sidebarVisible onActivate={onActivate} />);
+    await userEvent.click(screen.getByRole("button", { name: /search/i }));
+    expect(onActivate).toHaveBeenCalledWith("search");
   });
 });
