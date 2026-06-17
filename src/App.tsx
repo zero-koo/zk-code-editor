@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
+import { SearchPanel } from "./components/SearchPanel";
 import type { FsChange } from "./components/FileTreeNode";
 import { TabBar } from "./components/TabBar";
 import { EditorPane } from "./components/EditorPane";
@@ -20,7 +21,13 @@ export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [docs, setDocs] = useState<Record<string, string>>({});
+  const [reveal, setReveal] = useState<
+    { path: string; line: number; matchStart: number; matchEnd: number; seq: number } | null
+  >(null);
+  const revealSeq = useRef(0);
 
+  const activeView = useWorkspaceStore((s) => s.activeView);
+  const setActiveView = useWorkspaceStore((s) => s.setActiveView);
   const tabs = useWorkspaceStore((s) => s.tabs);
   const activeTabPath = useWorkspaceStore((s) => s.activeTabPath);
   const openTab = useWorkspaceStore((s) => s.openTab);
@@ -61,6 +68,25 @@ export default function App() {
     });
   }
 
+  function activate(view: "explorer" | "search") {
+    if (activeView === view && sidebarVisible) {
+      setSidebarVisible(false);
+    } else {
+      setActiveView(view);
+      setSidebarVisible(true);
+    }
+  }
+
+  async function openAt(path: string, line: number, matchStart: number, matchEnd: number) {
+    const isOpen = tabs.some((t) => t.path === path);
+    if (!isOpen) {
+      await openFile(path);
+    } else if (activeTabPath !== path) {
+      setActive(path);
+    }
+    setReveal({ path, line, matchStart, matchEnd, seq: ++revealSeq.current });
+  }
+
   function handleClose(path: string) {
     const tab = tabs.find((t) => t.path === path);
     if (tab?.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
@@ -97,13 +123,14 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
       <TitleBar title={activeTab?.name ?? null} />
       <div className="flex flex-1 min-h-0">
-      <ActivityBar
-        sidebarVisible={sidebarVisible}
-        onToggleSidebar={() => setSidebarVisible((v) => !v)}
-      />
+      <ActivityBar activeView={activeView} sidebarVisible={sidebarVisible} onActivate={activate} />
       {sidebarVisible && (
         <div className="flex">
-          <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
+          {activeView === "explorer" ? (
+            <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
+          ) : (
+            <SearchPanel onOpenMatch={openAt} />
+          )}
         </div>
       )}
       <div className="flex-1 min-w-0 flex flex-col bg-bg-2">
@@ -142,6 +169,7 @@ export default function App() {
             onChange={() => setDirty(activeTab.path, true)}
             onSave={(doc) => handleSave(activeTab.path, doc)}
             onPersist={persistDoc}
+            reveal={reveal && reveal.path === activeTab.path ? reveal : undefined}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-center">
