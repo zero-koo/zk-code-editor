@@ -1,4 +1,5 @@
 mod error;
+mod fs_ops;
 mod workspace;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
