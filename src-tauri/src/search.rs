@@ -217,6 +217,24 @@ pub fn search_impl(root: &Path, query: &str, opts: &SearchOptions) -> SearchResp
     SearchResponse { files, total_matches, truncated, regex_error: None }
 }
 
+use crate::workspace::Workspace;
+use tauri::State;
+
+#[tauri::command]
+pub async fn search_workspace(
+    query: String,
+    opts: SearchOptions,
+    ws: State<'_, Workspace>,
+) -> Result<SearchResponse, AppError> {
+    let root = ws
+        .root()
+        .ok_or_else(|| AppError::new(ErrorCode::Io, "no workspace open"))?;
+    // Run the blocking filesystem walk off the IPC worker thread.
+    tauri::async_runtime::spawn_blocking(move || search_impl(&root, &query, &opts))
+        .await
+        .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

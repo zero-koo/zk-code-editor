@@ -20,6 +20,7 @@ pub fn run() {
             fs_ops::create_dir,
             fs_ops::rename,
             fs_ops::delete,
+            search::search_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
