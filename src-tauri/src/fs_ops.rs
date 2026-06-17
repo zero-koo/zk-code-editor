@@ -41,7 +41,7 @@ pub fn read_dir(path: String, ws: State<Workspace>) -> Result<Vec<DirEntry>, App
     read_dir_impl(&root, &path)
 }
 
-const MAX_TEXT_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
+pub const MAX_TEXT_BYTES: u64 = 5 * 1024 * 1024; // 5 MB
 
 #[derive(Debug, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "kind", content = "text")]
