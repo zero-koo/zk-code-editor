@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
+import type { FsChange } from "./components/FileTreeNode";
 import { TabBar } from "./components/TabBar";
 import { EditorPane } from "./components/EditorPane";
 import { StatusBar } from "./components/StatusBar";
@@ -21,6 +22,8 @@ export default function App() {
   const closeTab = useWorkspaceStore((s) => s.closeTab);
   const setActive = useWorkspaceStore((s) => s.setActive);
   const setDirty = useWorkspaceStore((s) => s.setDirty);
+  const renameTab = useWorkspaceStore((s) => s.renameTab);
+  const closeTabsUnder = useWorkspaceStore((s) => s.closeTabsUnder);
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
 
@@ -50,6 +53,15 @@ export default function App() {
     closeTab(path);
   }
 
+  function handleFsChange(change: FsChange) {
+    if (change.type === "delete") {
+      closeTab(change.path);
+      closeTabsUnder(change.path);
+    } else if (change.type === "rename") {
+      renameTab(change.from, change.to, basename(change.to));
+    }
+  }
+
   async function handleSave(path: string, doc: string) {
     await writeFile(path, doc);
     setDocs((d) => ({ ...d, [path]: doc }));
@@ -64,7 +76,7 @@ export default function App() {
       />
       {sidebarVisible && (
         <div className="sidebar">
-          <FileExplorer onOpenFile={openFile} />
+          <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
         </div>
       )}
       <div className="editor-area">
