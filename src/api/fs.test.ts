@@ -29,4 +29,14 @@ describe("fs api", () => {
       contents: "data",
     });
   });
+
+  it("searchWorkspace passes query and opts", async () => {
+    invokeMock.mockResolvedValue({ files: [], total_matches: 0, truncated: false, regex_error: null });
+    const { searchWorkspace } = await import("./fs");
+    await searchWorkspace("foo", { case_sensitive: false, regex: false });
+    expect(invokeMock).toHaveBeenCalledWith("search_workspace", {
+      query: "foo",
+      opts: { case_sensitive: false, regex: false },
+    });
+  });
 });

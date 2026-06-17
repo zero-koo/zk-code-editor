@@ -27,3 +27,29 @@ export interface Tab {
   languageId: string;
   dirty: boolean;
 }
+
+export interface SearchOptions {
+  case_sensitive: boolean;
+  regex: boolean;
+}
+
+export interface LineMatch {
+  line_number: number;
+  preview: string;
+  highlight_ranges: [number, number][];
+  match_start: number;
+  match_end: number;
+}
+
+export interface FileMatches {
+  path: string;
+  rel_path: string;
+  matches: LineMatch[];
+}
+
+export interface SearchResponse {
+  files: FileMatches[];
+  total_matches: number;
+  truncated: boolean;
+  regex_error: string | null;
+}

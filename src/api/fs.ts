@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, FileContent } from "./types";
+import type { DirEntry, FileContent, SearchOptions, SearchResponse } from "./types";
 
 export const setWorkspaceRoot = (path: string) =>
   invoke<void>("set_workspace_root", { path });
@@ -24,3 +24,6 @@ export const rename = (from: string, to: string) =>
 
 export const deletePath = (path: string) =>
   invoke<void>("delete", { path });
+
+export const searchWorkspace = (query: string, opts: SearchOptions) =>
+  invoke<SearchResponse>("search_workspace", { query, opts });
