@@ -4,9 +4,10 @@ interface Props {
   activeView: View;
   sidebarVisible: boolean;
   onActivate: (view: View) => void;
+  onOpenShortcuts: () => void;
 }
 
-export function ActivityBar({ activeView, sidebarVisible, onActivate }: Props) {
+export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShortcuts }: Props) {
   const isActive = (v: View) => sidebarVisible && activeView === v;
   return (
     <div className="w-[54px] shrink-0 bg-titlebar border-r border-bd-2 flex flex-col items-center py-2.5 gap-1">
@@ -39,6 +40,16 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate }: Props) {
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
+        </svg>
+      </button>
+      <button
+        aria-label="Keyboard Shortcuts"
+        onClick={onOpenShortcuts}
+        className="mt-auto w-[38px] h-[38px] rounded-[9px] flex items-center justify-center text-tx-3 hover:bg-white/5 hover:text-tx-bright"
+      >
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2" />
+          <path d="M6 10h0M10 10h0M14 10h0M18 10h0M8 14h8" />
         </svg>
       </button>
     </div>
