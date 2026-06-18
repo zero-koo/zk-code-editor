@@ -6,6 +6,7 @@ import { useWorkspaceStore } from "../store/workspaceStore";
 import { saveWorkspaceRoot, loadWorkspaceRoot } from "../lib/workspacePersistence";
 import { FileTreeNode } from "./FileTreeNode";
 import type { FsChange } from "./FileTreeNode";
+import { FolderOpenIcon } from "./icons";
 
 interface Props {
   onOpenFile: (path: string) => void;
@@ -67,18 +68,7 @@ export function FileExplorer({ onOpenFile, onFsChange }: Props) {
           onClick={openFolder}
           className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx-2 bg-transparent border border-bd-1 rounded-[7px] px-2.5 py-1 cursor-pointer hover:bg-bg-3 hover:text-tx-1 hover:border-bd-hover"
         >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-          </svg>
+          <FolderOpenIcon size={13} strokeWidth={1.8} />
           Open Folder
         </button>
       </div>

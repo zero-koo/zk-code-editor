@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SHORTCUTS, formatCombo, isMac } from "../lib/shortcuts";
+import { CloseIcon } from "./icons";
 
 interface Props {
   open: boolean;
@@ -58,9 +59,7 @@ export function ShortcutsModal({ open, onClose }: Props) {
             onClick={onClose}
             className="flex w-6 h-6 items-center justify-center rounded-md text-tx-2 hover:bg-white/5 hover:text-tx-1"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
+            <CloseIcon size={13} strokeWidth={2.2} />
           </button>
         </div>
         <div className="px-4 pt-3 pb-1.5">

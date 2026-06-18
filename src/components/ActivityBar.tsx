@@ -1,3 +1,5 @@
+import { FolderOpenIcon, SearchIcon, KeyboardIcon } from "./icons";
+
 type View = "explorer" | "search";
 
 interface Props {
@@ -22,9 +24,7 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShor
         {isActive("explorer") && (
           <span className="absolute left-[-10px] top-[9px] w-[2.5px] h-5 rounded bg-accent" />
         )}
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        </svg>
+        <FolderOpenIcon size={19} strokeWidth={1.8} />
       </button>
       <button
         aria-label="Search"
@@ -37,20 +37,14 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShor
         {isActive("search") && (
           <span className="absolute left-[-10px] top-[9px] w-[2.5px] h-5 rounded bg-accent" />
         )}
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m21 21-4.3-4.3" />
-        </svg>
+        <SearchIcon size={19} strokeWidth={1.8} />
       </button>
       <button
         aria-label="Keyboard Shortcuts"
         onClick={onOpenShortcuts}
         className="mt-auto w-[38px] h-[38px] rounded-[9px] flex items-center justify-center text-tx-3 hover:bg-white/5 hover:text-tx-bright"
       >
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="6" width="20" height="12" rx="2" />
-          <path d="M6 10h0M10 10h0M14 10h0M18 10h0M8 14h8" />
-        </svg>
+        <KeyboardIcon size={19} strokeWidth={1.8} />
       </button>
     </div>
   );

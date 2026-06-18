@@ -8,6 +8,7 @@ import { TabBar } from "./components/TabBar";
 import { EditorPane } from "./components/EditorPane";
 import { StatusBar } from "./components/StatusBar";
 import { ShortcutsModal } from "./components/ShortcutsModal";
+import { InfoIcon, FileIcon } from "./components/icons";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { readFile, writeFile } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
@@ -159,21 +160,7 @@ export default function App() {
         />
         {notice && (
           <div className="flex items-start gap-3 m-2 rounded-[11px] border border-bd-1 bg-bg-1 px-3.5 py-3 text-tx-bright text-[12.5px]">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-accent shrink-0 mt-px"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 16v-4" />
-              <path d="M12 8h.01" />
-            </svg>
+            <InfoIcon size={16} strokeWidth={1.8} className="text-accent shrink-0 mt-px" />
             <span>{notice}</span>
           </div>
         )}
@@ -191,19 +178,7 @@ export default function App() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-center">
             <div className="w-10 h-10 rounded-[11px] bg-bg-3 text-tx-faint flex items-center justify-center">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" />
-              </svg>
+              <FileIcon size={20} />
             </div>
             <div className="text-[13.5px] text-tx-bright font-medium">No file open</div>
             <div className="text-xs text-tx-3">
