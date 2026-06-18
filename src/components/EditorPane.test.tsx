@@ -3,6 +3,26 @@ import { render } from "@testing-library/react";
 import { EditorPane } from "./EditorPane";
 
 describe("EditorPane", () => {
+  it("renders a left line-number gutter for each line", () => {
+    const { container } = render(
+      <EditorPane
+        path="/p/multi.ts"
+        languageId="typescript"
+        initialDoc={"first\nsecond\nthird"}
+        onChange={() => {}}
+        onSave={() => {}}
+      />
+    );
+    const gutter = container.querySelector(".cm-lineNumbers");
+    expect(gutter).not.toBeNull();
+    const numbers = Array.from(gutter!.querySelectorAll(".cm-gutterElement")).map(
+      (el) => el.textContent
+    );
+    expect(numbers).toContain("1");
+    expect(numbers).toContain("2");
+    expect(numbers).toContain("3");
+  });
+
   it("renders the document text into the editor", () => {
     const { container } = render(
       <EditorPane

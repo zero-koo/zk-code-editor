@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { EditorState, Compartment, EditorSelection } from "@codemirror/state";
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+} from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { zkTheme } from "../lib/editorTheme";
 import { languageExtension } from "../lib/language";
@@ -37,6 +43,9 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onP
     const state = EditorState.create({
       doc: initialDoc,
       extensions: [
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightActiveLine(),
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         saveKeymap,
