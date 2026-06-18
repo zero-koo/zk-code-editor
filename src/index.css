@@ -43,6 +43,8 @@ body {
 .zk-scroll::-webkit-scrollbar-thumb { background: #2c2c34; border-radius: 9px; border: 3px solid transparent; background-clip: content-box; }
 .zk-scroll::-webkit-scrollbar-thumb:hover { background: #3b3b46; background-clip: content-box; }
 
-.editor-host { height: 100%; }
+/* Fill the space between the tab bar and status bar without overflowing the
+   flex column (height:100% here would push the status bar off-screen). */
+.editor-host { flex: 1; min-height: 0; }
 .editor-host .cm-editor { height: 100%; }
 .editor-host .cm-scroller { font-family: var(--font-mono); }
