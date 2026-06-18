@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { Tab } from "../api/types";
 
 interface Props {
@@ -8,6 +9,14 @@ interface Props {
 }
 
 export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
+  const activeRef = useRef<HTMLDivElement>(null);
+
+  // Reveal the active tab when it changes — it may be scrolled out of view in
+  // the horizontally-scrolling tab bar (e.g. opened from a search result).
+  useEffect(() => {
+    activeRef.current?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+  }, [activePath]);
+
   return (
     <div
       className="h-[42px] shrink-0 flex items-stretch overflow-x-auto overflow-y-hidden bg-bg-1 border-b border-bd-2"
@@ -18,6 +27,7 @@ export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
         return (
           <div
             key={tab.path}
+            ref={active ? activeRef : undefined}
             role="tab"
             aria-selected={active}
             className={`relative flex items-center gap-2 pl-3.5 pr-3 cursor-pointer border-r border-bd-2 text-[12.5px] shrink-0 whitespace-nowrap ${

@@ -10,6 +10,18 @@ const tabs: Tab[] = [
 ];
 
 describe("TabBar", () => {
+  it("scrolls the active tab into view when the active tab changes", () => {
+    const scrollSpy = vi.fn();
+    // jsdom doesn't implement scrollIntoView; provide a spy.
+    Element.prototype.scrollIntoView = scrollSpy;
+    const { rerender } = render(
+      <TabBar tabs={tabs} activePath="/p/a.ts" onSelect={() => {}} onClose={() => {}} />
+    );
+    scrollSpy.mockClear();
+    rerender(<TabBar tabs={tabs} activePath="/p/b.ts" onSelect={() => {}} onClose={() => {}} />);
+    expect(scrollSpy).toHaveBeenCalled();
+  });
+
   it("renders each tab name", () => {
     render(<TabBar tabs={tabs} activePath="/p/a.ts" onSelect={() => {}} onClose={() => {}} />);
     expect(screen.getByText("a.ts")).toBeInTheDocument();
