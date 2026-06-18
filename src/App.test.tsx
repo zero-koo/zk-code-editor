@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import { useWorkspaceStore } from "./store/workspaceStore";
@@ -100,5 +100,28 @@ describe("App integration", () => {
     await userEvent.click(await screen.findByText("useEffect"));
     const lines = await screen.findAllByText((_t, el) => el?.classList.contains("cm-line") ?? false);
     expect(lines.some((l) => /beta useEffect gamma/.test(l.textContent ?? ""))).toBe(true);
+  });
+
+  it("Ctrl+Shift+F switches to the search view (global shortcut)", async () => {
+    render(<App />);
+    // jsdom isMac=false → Ctrl is the 'mod' key
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })
+    );
+    await waitFor(() => expect(useWorkspaceStore.getState().activeView).toBe("search"));
+  });
+
+  it("Ctrl+/ opens the keyboard shortcuts modal", async () => {
+    render(<App />);
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true, cancelable: true })
+    );
+    expect(await screen.findByRole("dialog", { name: /keyboard shortcuts/i })).toBeInTheDocument();
+  });
+
+  it("the ActivityBar shortcuts button opens the modal", async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /keyboard shortcuts/i }));
+    expect(await screen.findByRole("dialog", { name: /keyboard shortcuts/i })).toBeInTheDocument();
   });
 });

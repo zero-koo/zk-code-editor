@@ -7,6 +7,8 @@ import type { FsChange } from "./components/FileTreeNode";
 import { TabBar } from "./components/TabBar";
 import { EditorPane } from "./components/EditorPane";
 import { StatusBar } from "./components/StatusBar";
+import { ShortcutsModal } from "./components/ShortcutsModal";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { readFile, writeFile } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
@@ -19,6 +21,7 @@ function errorMessage(e: unknown): string {
 
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [docs, setDocs] = useState<Record<string, string>>({});
   const [reveal, setReveal] = useState<
@@ -77,6 +80,12 @@ export default function App() {
     }
   }
 
+  useGlobalShortcuts({
+    "view.explorer": () => activate("explorer"),
+    "view.search": () => activate("search"),
+    "help.shortcuts": () => setShortcutsOpen((o) => !o),
+  });
+
   async function openAt(path: string, line: number, matchStart: number, matchEnd: number) {
     const isOpen = tabs.some((t) => t.path === path);
     if (!isOpen) {
@@ -123,7 +132,12 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
       <TitleBar title={activeTab?.name ?? null} />
       <div className="flex flex-1 min-h-0">
-      <ActivityBar activeView={activeView} sidebarVisible={sidebarVisible} onActivate={activate} />
+      <ActivityBar
+        activeView={activeView}
+        sidebarVisible={sidebarVisible}
+        onActivate={activate}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />
       {sidebarVisible && (
         <>
           {/* Both panels stay mounted so their state (results, expanded tree)
@@ -203,6 +217,7 @@ export default function App() {
         />
       </div>
       </div>
+      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }
