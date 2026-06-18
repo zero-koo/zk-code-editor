@@ -18,6 +18,7 @@ describe("FileExplorer", () => {
     open.mockReset();
     setWorkspaceRoot.mockReset();
     readDir.mockReset();
+    localStorage.clear();
     useWorkspaceStore.setState({ root: null, tabs: [], activeTabPath: null, expandedDirs: new Set() });
   });
 
@@ -34,5 +35,15 @@ describe("FileExplorer", () => {
     expect(setWorkspaceRoot).toHaveBeenCalledWith("/proj");
     expect(await screen.findByText("main.ts")).toBeInTheDocument();
     expect(useWorkspaceStore.getState().root).toBe("/proj");
+  });
+
+  it("restores the tree from a persisted root on mount (survives reload)", async () => {
+    localStorage.setItem("zk.workspaceRoot", "/saved");
+    setWorkspaceRoot.mockResolvedValue(undefined);
+    readDir.mockResolvedValue([{ name: "restored.ts", path: "/saved/restored.ts", is_dir: false }]);
+    render(<FileExplorer onOpenFile={() => {}} />);
+    expect(await screen.findByText("restored.ts")).toBeInTheDocument();
+    expect(setWorkspaceRoot).toHaveBeenCalledWith("/saved");
+    expect(useWorkspaceStore.getState().root).toBe("/saved");
   });
 });

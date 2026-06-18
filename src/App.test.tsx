@@ -22,6 +22,7 @@ vi.mock("./api/fs", () => ({
 describe("App integration", () => {
   beforeEach(() => {
     [open, readDir, readFile, writeFile, setWorkspaceRoot, searchWorkspace].forEach((m) => m.mockReset());
+    localStorage.clear();
     useWorkspaceStore.setState({ root: null, tabs: [], activeTabPath: null, expandedDirs: new Set(), activeView: "explorer" });
   });
 

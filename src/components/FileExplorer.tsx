@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { setWorkspaceRoot, readDir } from "../api/fs";
 import type { DirEntry } from "../api/types";
 import { useWorkspaceStore } from "../store/workspaceStore";
+import { saveWorkspaceRoot, loadWorkspaceRoot } from "../lib/workspacePersistence";
 import { FileTreeNode } from "./FileTreeNode";
 import type { FsChange } from "./FileTreeNode";
 
@@ -21,8 +22,35 @@ export function FileExplorer({ onOpenFile, onFsChange }: Props) {
     if (typeof selected !== "string") return;
     await setWorkspaceRoot(selected);
     setRoot(selected);
+    saveWorkspaceRoot(selected);
     setEntries(await readDir(selected));
   }
+
+  // Restore the workspace after a reload/restart: the dev server (Vite) reloads
+  // the webview when project files change, which wipes the in-memory store —
+  // re-open the last folder and re-list its tree so it doesn't vanish.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const current = useWorkspaceStore.getState().root;
+      const target = current ?? loadWorkspaceRoot();
+      if (!target) return;
+      try {
+        if (!current) {
+          await setWorkspaceRoot(target);
+          setRoot(target);
+        }
+        const list = await readDir(target);
+        if (!cancelled) setEntries(list);
+      } catch {
+        saveWorkspaceRoot(null); // folder gone/invalid — forget it
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleFsChange(change: FsChange) {
     onFsChange?.(change);
