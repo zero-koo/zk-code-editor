@@ -10,7 +10,7 @@ interface Props {
 export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
   return (
     <div
-      className="h-[42px] shrink-0 flex items-stretch bg-bg-1 border-b border-bd-2"
+      className="h-[42px] shrink-0 flex items-stretch overflow-x-auto overflow-y-hidden bg-bg-1 border-b border-bd-2"
       role="tablist"
     >
       {tabs.map((tab) => {
@@ -20,7 +20,7 @@ export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
             key={tab.path}
             role="tab"
             aria-selected={active}
-            className={`relative flex items-center gap-2 pl-3.5 pr-3 cursor-pointer border-r border-bd-2 text-[12.5px] ${
+            className={`relative flex items-center gap-2 pl-3.5 pr-3 cursor-pointer border-r border-bd-2 text-[12.5px] shrink-0 whitespace-nowrap ${
               active
                 ? "text-white bg-bg-2 font-medium"
                 : "text-tx-2 hover:text-tx-bright hover:bg-white/[0.02]"
@@ -44,7 +44,7 @@ export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6" />
             </svg>
-            <span className="tab-name">{tab.name}</span>
+            <span className="tab-name truncate max-w-[160px]">{tab.name}</span>
             {tab.dirty && (
               <span
                 data-testid={`dirty-${tab.path}`}

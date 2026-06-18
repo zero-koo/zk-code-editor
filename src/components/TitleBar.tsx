@@ -16,7 +16,7 @@ export function TitleBar({ title }: Props) {
     >
       <div
         data-tauri-drag-region
-        className="flex-1 flex items-center justify-center gap-2 text-xs text-tx-2 pointer-events-none"
+        className="flex-1 min-w-0 flex items-center justify-center gap-2 text-xs text-tx-2 pointer-events-none"
       >
         <svg
           width="13"
@@ -27,17 +27,18 @@ export function TitleBar({ title }: Props) {
           strokeWidth="2.1"
           strokeLinecap="round"
           strokeLinejoin="round"
+          className="shrink-0"
         >
           <path d="m16 18 6-6-6-6" />
           <path d="m8 6-6 6 6 6" />
         </svg>
         {title ? (
           <>
-            <span className="text-tx-bright font-medium">{title}</span>
-            <span className="text-tx-faint">— zk-code-editor</span>
+            <span className="text-tx-bright font-medium truncate">{title}</span>
+            <span className="text-tx-faint shrink-0">— zk-code-editor</span>
           </>
         ) : (
-          <span className="text-tx-bright font-medium">zk-code-editor</span>
+          <span className="text-tx-bright font-medium truncate">zk-code-editor</span>
         )}
       </div>
     </div>
