@@ -10,6 +10,7 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { zkTheme } from "../lib/editorTheme";
 import { languageExtension } from "../lib/language";
+import { cursorInfo, type CursorInfo } from "../lib/cursorInfo";
 
 interface Props {
   path: string;
@@ -18,14 +19,15 @@ interface Props {
   onChange: (doc: string) => void;
   onSave: (doc: string) => void;
   onPersist?: (path: string, doc: string) => void;
+  onCursorChange?: (info: CursorInfo) => void;
   reveal?: { line: number; matchStart: number; matchEnd: number; seq: number };
 }
 
-export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onPersist, reveal }: Props) {
+export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onPersist, onCursorChange, reveal }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const cbRef = useRef({ onChange, onSave, onPersist });
-  cbRef.current = { onChange, onSave, onPersist };
+  const cbRef = useRef({ onChange, onSave, onPersist, onCursorChange });
+  cbRef.current = { onChange, onSave, onPersist, onCursorChange };
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -53,11 +55,15 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onP
         zkTheme,
         EditorView.updateListener.of((u) => {
           if (u.docChanged) cbRef.current.onChange(u.state.doc.toString());
+          if (u.docChanged || u.selectionSet) {
+            cbRef.current.onCursorChange?.(cursorInfo(u.state));
+          }
         }),
       ],
     });
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+    cbRef.current.onCursorChange?.(cursorInfo(view.state));
     const p = path;
     return () => {
       cbRef.current.onPersist?.(p, view.state.doc.toString());

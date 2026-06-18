@@ -15,6 +15,7 @@ import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
 import { basename } from "./lib/paths";
 import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
+import type { CursorInfo } from "./lib/cursorInfo";
 
 function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -30,6 +31,7 @@ export default function App() {
     { path: string; line: number; matchStart: number; matchEnd: number; seq: number } | null
   >(null);
   const revealSeq = useRef(0);
+  const [cursor, setCursor] = useState<CursorInfo | null>(null);
   const hydratedRef = useRef(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -216,6 +218,7 @@ export default function App() {
             onChange={() => setDirty(activeTab.path, true)}
             onSave={(doc) => handleSave(activeTab.path, doc)}
             onPersist={persistDoc}
+            onCursorChange={setCursor}
             reveal={reveal && reveal.path === activeTab.path ? reveal : undefined}
           />
         ) : (
@@ -232,6 +235,7 @@ export default function App() {
         <StatusBar
           path={activeTab?.path ?? null}
           languageId={activeTab?.languageId ?? null}
+          cursor={activeTab ? cursor : null}
         />
       </div>
       </div>

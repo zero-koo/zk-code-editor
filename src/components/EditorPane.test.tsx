@@ -106,4 +106,24 @@ describe("EditorPane", () => {
     unmount();
     expect(onPersist).toHaveBeenCalledWith("/p/a.ts", "startX");
   });
+
+  it("reports the cursor on mount and on selection change", async () => {
+    const onCursorChange = vi.fn();
+    const { container } = render(
+      <EditorPane
+        path="/p/a.ts"
+        languageId="typescript"
+        initialDoc={"abc\ndef"}
+        onChange={() => {}}
+        onSave={() => {}}
+        onCursorChange={onCursorChange}
+      />
+    );
+    expect(onCursorChange).toHaveBeenCalled(); // initial report
+    const { EditorView } = await import("@codemirror/view");
+    const view = EditorView.findFromDOM(container.querySelector(".cm-editor") as HTMLElement)!;
+    onCursorChange.mockClear();
+    view.dispatch({ selection: { anchor: 5 } }); // offset 5 → line 2 of "abc\ndef"
+    expect(onCursorChange).toHaveBeenCalledWith(expect.objectContaining({ line: 2 }));
+  });
 });

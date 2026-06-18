@@ -42,6 +42,17 @@ describe("App integration", () => {
     expect(line.textContent).toMatch(/const x = 1;/);
   });
 
+  it("shows the cursor position once a file is open", async () => {
+    open.mockResolvedValue("/proj");
+    readDir.mockResolvedValue([{ name: "a.ts", path: "/proj/a.ts", is_dir: false }]);
+    readFile.mockResolvedValue({ kind: "text", text: "const x = 1;" });
+
+    render(<App />);
+    await userEvent.click(screen.getByRole("button", { name: /open folder/i }));
+    await userEvent.click(await screen.findByText("a.ts"));
+    expect(await screen.findByText(/Ln 1, Col 1/)).toBeInTheDocument();
+  });
+
   it("shows a placeholder for binary files instead of opening a tab", async () => {
     open.mockResolvedValue("/proj");
     readDir.mockResolvedValue([{ name: "img.png", path: "/proj/img.png", is_dir: false }]);
