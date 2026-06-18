@@ -13,7 +13,7 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { readFile, writeFile } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
-import { basename } from "./lib/paths";
+import { basename, relativePath } from "./lib/paths";
 import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
 import type { CursorInfo } from "./lib/cursorInfo";
 
@@ -233,7 +233,7 @@ export default function App() {
           </div>
         )}
         <StatusBar
-          path={activeTab?.path ?? null}
+          path={activeTab ? (root ? relativePath(root, activeTab.path) : activeTab.path) : null}
           languageId={activeTab?.languageId ?? null}
           cursor={activeTab ? cursor : null}
         />

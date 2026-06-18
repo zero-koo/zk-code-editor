@@ -17,3 +17,14 @@ export function dirname(p: string): string {
 export function joinPath(dir: string, name: string): string {
   return `${dir.replace(/[/\\]+$/, "")}/${name}`;
 }
+
+/**
+ * Path of `p` relative to the workspace `root`. Returns the root's own basename
+ * if `p` is the root itself, and falls back to `p` unchanged if it isn't under root.
+ */
+export function relativePath(root: string, p: string): string {
+  const r = root.replace(/[/\\]+$/, "");
+  if (p === r) return basename(p);
+  if (p.startsWith(`${r}/`) || p.startsWith(`${r}\\`)) return p.slice(r.length + 1);
+  return p;
+}
