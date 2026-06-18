@@ -3,6 +3,7 @@ import { searchWorkspace } from "../api/fs";
 import type { SearchResponse } from "../api/types";
 import { splitHighlights } from "../lib/highlight";
 import { SectionLabel } from "./SectionLabel";
+import { SidebarPanel } from "./SidebarPanel";
 
 interface Props {
   onOpenMatch: (path: string, line: number, matchStart: number, matchEnd: number) => void;
@@ -38,7 +39,7 @@ export function SearchPanel({ onOpenMatch }: Props) {
   }
 
   return (
-    <div className="w-[258px] shrink-0 bg-bg-1 border-r border-bd-2 flex flex-col">
+    <SidebarPanel>
       <div className="px-3 pt-3 pb-2">
         <div className="mb-2.5"><SectionLabel>Search</SectionLabel></div>
         <div className="flex items-center gap-1.5 bg-bg-0 border border-bd-hover rounded-md px-2 py-1.5">
@@ -111,6 +112,6 @@ export function SearchPanel({ onOpenMatch }: Props) {
           );
         })}
       </div>
-    </div>
+    </SidebarPanel>
   );
 }
