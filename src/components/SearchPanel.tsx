@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { searchWorkspace } from "../api/fs";
 import type { SearchResponse } from "../api/types";
 import { splitHighlights } from "../lib/highlight";
+import { SectionLabel } from "./SectionLabel";
 
 interface Props {
   onOpenMatch: (path: string, line: number, matchStart: number, matchEnd: number) => void;
@@ -39,7 +40,7 @@ export function SearchPanel({ onOpenMatch }: Props) {
   return (
     <div className="w-[258px] shrink-0 bg-bg-1 border-r border-bd-2 flex flex-col">
       <div className="px-3 pt-3 pb-2">
-        <div className="text-[11px] font-semibold tracking-[0.13em] uppercase text-tx-3 mb-2.5">Search</div>
+        <div className="mb-2.5"><SectionLabel>Search</SectionLabel></div>
         <div className="flex items-center gap-1.5 bg-bg-0 border border-bd-hover rounded-md px-2 py-1.5">
           <input
             className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-tx-1 font-mono placeholder:text-tx-3"

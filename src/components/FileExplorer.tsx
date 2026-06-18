@@ -7,6 +7,7 @@ import { saveWorkspaceRoot, loadWorkspaceRoot } from "../lib/workspacePersistenc
 import { FileTreeNode } from "./FileTreeNode";
 import type { FsChange } from "./FileTreeNode";
 import { FolderOpenIcon } from "./icons";
+import { SectionLabel } from "./SectionLabel";
 
 interface Props {
   onOpenFile: (path: string) => void;
@@ -61,9 +62,7 @@ export function FileExplorer({ onOpenFile, onFsChange }: Props) {
   return (
     <div className="w-[258px] shrink-0 bg-bg-1 border-r border-bd-2 flex flex-col">
       <div className="h-[42px] shrink-0 flex items-center justify-between pl-4 pr-2.5">
-        <span className="text-[11px] font-semibold tracking-[0.13em] uppercase text-tx-3">
-          Explorer
-        </span>
+        <SectionLabel>Explorer</SectionLabel>
         <button
           onClick={openFolder}
           className="flex items-center gap-1.5 text-[11.5px] font-medium text-tx-2 bg-transparent border border-bd-1 rounded-[7px] px-2.5 py-1 cursor-pointer hover:bg-bg-3 hover:text-tx-1 hover:border-bd-hover"
