@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
@@ -14,6 +14,7 @@ import { readFile, writeFile } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
 import { basename } from "./lib/paths";
+import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
 
 function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -29,7 +30,10 @@ export default function App() {
     { path: string; line: number; matchStart: number; matchEnd: number; seq: number } | null
   >(null);
   const revealSeq = useRef(0);
+  const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
 
+  const root = useWorkspaceStore((s) => s.root);
   const activeView = useWorkspaceStore((s) => s.activeView);
   const setActiveView = useWorkspaceStore((s) => s.setActiveView);
   const tabs = useWorkspaceStore((s) => s.tabs);
@@ -71,6 +75,45 @@ export default function App() {
       dirty: false,
     });
   }
+
+  async function restoreTabs(paths: string[], activePath: string | null) {
+    for (const path of paths) {
+      try {
+        const content = await readFile(path);
+        if (content.kind !== "text") continue; // skip binary/too_large
+        setDocs((d) => ({ ...d, [path]: content.text }));
+        openTab({
+          path,
+          name: basename(path),
+          languageId: languageIdForFile(path),
+          dirty: false,
+        });
+      } catch {
+        // missing/unreadable file — skip
+      }
+    }
+    if (activePath && paths.includes(activePath)) setActive(activePath);
+  }
+
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (!root) return; // wait until the workspace root is restored/opened
+    hydratedRef.current = true;
+    const saved = loadOpenTabs();
+    if (saved && saved.root === root && tabs.length === 0) {
+      void restoreTabs(saved.paths, saved.activePath).finally(() => setHydrated(true));
+    } else {
+      setHydrated(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root]);
+
+  useEffect(() => {
+    if (!hydrated) return; // don't persist until restore has run (avoids clobbering with [])
+    if (root) {
+      saveOpenTabs({ root, paths: tabs.map((t) => t.path), activePath: activeTabPath });
+    }
+  }, [hydrated, root, tabs, activeTabPath]);
 
   function activate(view: "explorer" | "search") {
     if (activeView === view && sidebarVisible) {

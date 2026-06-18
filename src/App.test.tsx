@@ -125,4 +125,54 @@ describe("App integration", () => {
     await userEvent.click(screen.getByRole("button", { name: /keyboard shortcuts/i }));
     expect(await screen.findByRole("dialog", { name: /keyboard shortcuts/i })).toBeInTheDocument();
   });
+
+  it("restores saved tabs and the active tab on startup", async () => {
+    useWorkspaceStore.setState({ root: "/proj" });
+    readDir.mockResolvedValue([]);
+    localStorage.setItem(
+      "zk.openTabs",
+      JSON.stringify({ root: "/proj", paths: ["/proj/a.ts", "/proj/b.ts"], activePath: "/proj/b.ts" })
+    );
+    readFile.mockImplementation((p: string) => Promise.resolve({ kind: "text", text: `// ${p}` }));
+
+    render(<App />);
+
+    expect(await screen.findByRole("tab", { name: /a\.ts/ })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /b\.ts/ })).toBeInTheDocument();
+    await waitFor(() => expect(useWorkspaceStore.getState().activeTabPath).toBe("/proj/b.ts"));
+  });
+
+  it("skips a binary/missing file when restoring tabs", async () => {
+    useWorkspaceStore.setState({ root: "/proj" });
+    readDir.mockResolvedValue([]);
+    localStorage.setItem(
+      "zk.openTabs",
+      JSON.stringify({ root: "/proj", paths: ["/proj/img.png", "/proj/a.ts"], activePath: "/proj/a.ts" })
+    );
+    readFile.mockImplementation((p: string) =>
+      p.endsWith(".png")
+        ? Promise.resolve({ kind: "binary" })
+        : Promise.resolve({ kind: "text", text: "ok" })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByRole("tab", { name: /a\.ts/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /img\.png/ })).not.toBeInTheDocument();
+  });
+
+  it("does not restore tabs when the saved root differs from the current root", async () => {
+    useWorkspaceStore.setState({ root: "/proj" });
+    readDir.mockResolvedValue([]);
+    localStorage.setItem(
+      "zk.openTabs",
+      JSON.stringify({ root: "/other", paths: ["/other/a.ts"], activePath: "/other/a.ts" })
+    );
+    readFile.mockResolvedValue({ kind: "text", text: "x" });
+
+    render(<App />);
+    // give effects a tick; no tab should appear
+    await waitFor(() => expect(useWorkspaceStore.getState().activeTabPath).toBeNull());
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  });
 });
