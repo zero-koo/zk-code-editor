@@ -1,4 +1,5 @@
 import { FolderOpenIcon, SearchIcon, KeyboardIcon } from "./icons";
+import { IconButton } from "./IconButton";
 
 type View = "explorer" | "search";
 
@@ -39,13 +40,13 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShor
         )}
         <SearchIcon size={19} strokeWidth={1.8} />
       </button>
-      <button
-        aria-label="Keyboard Shortcuts"
+      <IconButton
+        label="Keyboard Shortcuts"
         onClick={onOpenShortcuts}
-        className="mt-auto w-[38px] h-[38px] rounded-[9px] flex items-center justify-center text-tx-3 hover:bg-white/5 hover:text-tx-bright"
+        className="mt-auto w-[38px] h-[38px] rounded-[9px] text-tx-3 hover:bg-white/5 hover:text-tx-bright"
       >
         <KeyboardIcon size={19} strokeWidth={1.8} />
-      </button>
+      </IconButton>
     </div>
   );
 }

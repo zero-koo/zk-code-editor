@@ -41,10 +41,12 @@ describe("TabBar", () => {
     expect(onSelect).toHaveBeenCalledWith("/p/b.ts");
   });
 
-  it("calls onClose when the close button is clicked", async () => {
+  it("calls onClose (and not onSelect) when the close button is clicked", async () => {
     const onClose = vi.fn();
-    render(<TabBar tabs={tabs} activePath="/p/a.ts" onSelect={() => {}} onClose={onClose} />);
+    const onSelect = vi.fn();
+    render(<TabBar tabs={tabs} activePath="/p/a.ts" onSelect={onSelect} onClose={onClose} />);
     await userEvent.click(screen.getByLabelText("Close a.ts"));
     expect(onClose).toHaveBeenCalledWith("/p/a.ts");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

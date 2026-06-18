@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { SHORTCUTS, formatCombo, isMac } from "../lib/shortcuts";
 import { CloseIcon } from "./icons";
+import { IconButton } from "./IconButton";
 
 interface Props {
   open: boolean;
@@ -54,13 +55,13 @@ export function ShortcutsModal({ open, onClose }: Props) {
       >
         <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-bd-2">
           <span className="flex-1 text-sm font-semibold text-tx-1">Keyboard Shortcuts</span>
-          <button
-            aria-label="Close"
+          <IconButton
+            label="Close"
             onClick={onClose}
-            className="flex w-6 h-6 items-center justify-center rounded-md text-tx-2 hover:bg-white/5 hover:text-tx-1"
+            className="w-6 h-6 rounded-md text-tx-2 hover:bg-white/5 hover:text-tx-1"
           >
             <CloseIcon size={13} strokeWidth={2.2} />
-          </button>
+          </IconButton>
         </div>
         <div className="px-4 pt-3 pb-1.5">
           <input

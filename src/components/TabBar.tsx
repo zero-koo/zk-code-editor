@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { Tab } from "../api/types";
 import { FileIcon, CloseIcon } from "./icons";
+import { IconButton } from "./IconButton";
 
 interface Props {
   tabs: Tab[];
@@ -49,16 +50,16 @@ export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
                 className="w-2 h-2 rounded-full bg-[#d4d4dc]"
               />
             )}
-            <button
-              aria-label={`Close ${tab.name}`}
+            <IconButton
+              label={`Close ${tab.name}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(tab.path);
               }}
-              className="flex w-[17px] h-[17px] items-center justify-center rounded-[5px] text-tx-faint hover:bg-[#2a2a32] hover:text-tx-1"
+              className="w-[17px] h-[17px] rounded-[5px] text-tx-faint hover:bg-[#2a2a32] hover:text-tx-1"
             >
               <CloseIcon size={11} strokeWidth={2.2} />
-            </button>
+            </IconButton>
           </div>
         );
       })}
