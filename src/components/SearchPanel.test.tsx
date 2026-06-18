@@ -26,6 +26,13 @@ const resp = (over: Partial<SearchResponse> = {}): SearchResponse => ({
 describe("SearchPanel", () => {
   beforeEach(() => searchWorkspace.mockReset());
 
+  it("focuses the input when the panel becomes active", () => {
+    const { rerender } = render(<SearchPanel onOpenMatch={() => {}} active={false} />);
+    expect(screen.getByPlaceholderText(/search/i)).not.toHaveFocus();
+    rerender(<SearchPanel onOpenMatch={() => {}} active={true} />);
+    expect(screen.getByPlaceholderText(/search/i)).toHaveFocus();
+  });
+
   it("runs a debounced search and renders grouped results", async () => {
     searchWorkspace.mockResolvedValue(resp());
     render(<SearchPanel onOpenMatch={() => {}} />);

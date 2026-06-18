@@ -147,7 +147,7 @@ export default function App() {
             <FileExplorer onOpenFile={openFile} onFsChange={handleFsChange} />
           </div>
           <div className={activeView === "search" ? "flex" : "hidden"}>
-            <SearchPanel onOpenMatch={openAt} />
+            <SearchPanel onOpenMatch={openAt} active={activeView === "search"} />
           </div>
         </>
       )}

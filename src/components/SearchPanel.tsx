@@ -7,15 +7,24 @@ import { SidebarPanel } from "./SidebarPanel";
 
 interface Props {
   onOpenMatch: (path: string, line: number, matchStart: number, matchEnd: number) => void;
+  /** Whether this panel is the active sidebar view. */
+  active?: boolean;
 }
 
-export function SearchPanel({ onOpenMatch }: Props) {
+export function SearchPanel({ onOpenMatch, active = false }: Props) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const seqRef = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the search input whenever the panel becomes the active view. The
+  // panel stays mounted across view switches, so this runs on entry each time.
+  useEffect(() => {
+    if (active) inputRef.current?.focus();
+  }, [active]);
 
   useEffect(() => {
     if (query.trim() === "") {
@@ -44,6 +53,7 @@ export function SearchPanel({ onOpenMatch }: Props) {
         <div className="mb-2.5"><SectionLabel>Search</SectionLabel></div>
         <div className="flex items-center gap-1.5 bg-bg-0 border border-bd-hover rounded-md px-2 py-1.5">
           <input
+            ref={inputRef}
             className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-tx-1 font-mono placeholder:text-tx-3"
             placeholder="Search"
             value={query}
