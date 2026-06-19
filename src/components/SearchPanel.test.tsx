@@ -23,6 +23,22 @@ const resp = (over: Partial<SearchResponse> = {}): SearchResponse => ({
   ...over,
 });
 
+const navResp = {
+  files: [
+    {
+      path: "/proj/a.ts",
+      rel_path: "a.ts",
+      matches: [
+        { line_number: 1, preview: "one", highlight_ranges: [[0, 3]] as [number, number][], match_start: 0, match_end: 3 },
+        { line_number: 2, preview: "two", highlight_ranges: [[0, 3]] as [number, number][], match_start: 0, match_end: 3 },
+      ],
+    },
+  ],
+  total_matches: 2,
+  truncated: false,
+  regex_error: null,
+};
+
 describe("SearchPanel", () => {
   beforeEach(() => searchWorkspace.mockReset());
 
@@ -57,5 +73,46 @@ describe("SearchPanel", () => {
     await userEvent.click(screen.getByLabelText(/use regular expression/i));
     await userEvent.type(screen.getByPlaceholderText(/search/i), "(");
     expect(await screen.findByText(/bad pattern/i)).toBeInTheDocument();
+  });
+
+  it("selects the first match on ArrowDown and opens it with Enter", async () => {
+    searchWorkspace.mockResolvedValue(navResp);
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
+    await screen.findByText("one");
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenMatch).toHaveBeenCalledWith("/proj/a.ts", 1, 0, 3);
+  });
+
+  it("moves the selection down then up", async () => {
+    searchWorkspace.mockResolvedValue(navResp);
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
+    await screen.findByText("two");
+    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowUp}"); // 0 → 1 → 0
+    await userEvent.keyboard("{Enter}");
+    expect(onOpenMatch).toHaveBeenCalledWith("/proj/a.ts", 1, 0, 3);
+  });
+
+  it("marks the selected match with aria-selected", async () => {
+    searchWorkspace.mockResolvedValue(navResp);
+    render(<SearchPanel onOpenMatch={() => {}} active />);
+    await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
+    await screen.findByText("one");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.querySelector('[aria-selected="true"]')?.textContent).toContain("one");
+  });
+
+  it("does nothing on arrows/Enter when there are no results", async () => {
+    searchWorkspace.mockResolvedValue({ files: [], total_matches: 0, truncated: false, regex_error: null });
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
+    await screen.findByText(/0 results/);
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(onOpenMatch).not.toHaveBeenCalled();
   });
 });
