@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { DirEntry } from "../api/types";
 import { readDir, deletePath, rename, createFile } from "../api/fs";
 import { dirname, joinPath } from "../lib/paths";
@@ -17,7 +17,7 @@ interface Props {
   onFsChange?: (change: FsChange) => void;
 }
 
-export function FileTreeNode({ entry, depth, onOpenFile, onFsChange }: Props) {
+export const FileTreeNode = memo(function FileTreeNode({ entry, depth, onOpenFile, onFsChange }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<DirEntry[] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -148,4 +148,4 @@ export function FileTreeNode({ entry, depth, onOpenFile, onFsChange }: Props) {
         ))}
     </div>
   );
-}
+});

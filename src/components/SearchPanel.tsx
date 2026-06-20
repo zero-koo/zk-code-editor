@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
 import { searchWorkspace } from "../api/fs";
 import type { SearchResponse } from "../api/types";
 import { splitHighlights } from "../lib/highlight";
@@ -18,7 +18,7 @@ interface FlatMatch {
   matchEnd: number;
 }
 
-export function SearchPanel({ onOpenMatch, active = false }: Props) {
+export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = false }: Props) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
@@ -194,4 +194,4 @@ export function SearchPanel({ onOpenMatch, active = false }: Props) {
       </div>
     </SidebarPanel>
   );
-}
+});

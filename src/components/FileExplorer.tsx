@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { setWorkspaceRoot, readDir } from "../api/fs";
 import type { DirEntry } from "../api/types";
@@ -15,7 +15,7 @@ interface Props {
   onFsChange?: (change: FsChange) => void;
 }
 
-export function FileExplorer({ onOpenFile, onFsChange }: Props) {
+export const FileExplorer = memo(function FileExplorer({ onOpenFile, onFsChange }: Props) {
   const root = useWorkspaceStore((s) => s.root);
   const setRoot = useWorkspaceStore((s) => s.setRoot);
   const [entries, setEntries] = useState<DirEntry[]>([]);
@@ -55,10 +55,15 @@ export function FileExplorer({ onOpenFile, onFsChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleFsChange(change: FsChange) {
-    onFsChange?.(change);
-    if (root) setEntries(await readDir(root));
-  }
+  // Stable identity so memoized FileTreeNode children don't re-render.
+  const handleFsChange = useCallback(
+    async (change: FsChange) => {
+      onFsChange?.(change);
+      const current = useWorkspaceStore.getState().root;
+      if (current) setEntries(await readDir(current));
+    },
+    [onFsChange]
+  );
 
   return (
     <SidebarPanel>
@@ -87,4 +92,4 @@ export function FileExplorer({ onOpenFile, onFsChange }: Props) {
       )}
     </SidebarPanel>
   );
-}
+});

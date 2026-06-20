@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import type { Tab } from "../api/types";
 import { FileIcon, CloseIcon } from "./icons";
 import { IconButton } from "./IconButton";
@@ -10,7 +10,7 @@ interface Props {
   onClose: (path: string) => void;
 }
 
-export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
+export const TabBar = memo(function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
   const activeRef = useRef<HTMLDivElement>(null);
 
   // Reveal the active tab when it changes — it may be scrolled out of view in
@@ -65,4 +65,4 @@ export function TabBar({ tabs, activePath, onSelect, onClose }: Props) {
       })}
     </div>
   );
-}
+});

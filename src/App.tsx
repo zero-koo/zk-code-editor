@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
@@ -53,37 +53,40 @@ export default function App() {
   const persistDoc = (p: string, doc: string) =>
     setDocs((d) => ({ ...d, [p]: doc }));
 
-  async function openFile(path: string) {
-    setNotice(null);
-    // Already open — just focus the tab. Re-reading would round-trip the IPC
-    // for nothing and clobber any unsaved edits in that tab with disk contents.
-    if (tabs.some((t) => t.path === path)) {
-      setActive(path);
-      return;
-    }
-    let content;
-    try {
-      content = await readFile(path);
-    } catch (e) {
-      setNotice(`Failed to open ${basename(path)}: ${errorMessage(e)}`);
-      return;
-    }
-    if (content.kind === "binary") {
-      setNotice(`Cannot preview binary file: ${basename(path)}`);
-      return;
-    }
-    if (content.kind === "too_large") {
-      setNotice(`Cannot preview file (too large): ${basename(path)}`);
-      return;
-    }
-    setDocs((d) => ({ ...d, [path]: content.text }));
-    openTab({
-      path,
-      name: basename(path),
-      languageId: languageIdForFile(path),
-      dirty: false,
-    });
-  }
+  const openFile = useCallback(
+    async (path: string) => {
+      setNotice(null);
+      // Already open — just focus the tab. Re-reading would round-trip the IPC
+      // for nothing and clobber any unsaved edits in that tab with disk contents.
+      if (useWorkspaceStore.getState().tabs.some((t) => t.path === path)) {
+        setActive(path);
+        return;
+      }
+      let content;
+      try {
+        content = await readFile(path);
+      } catch (e) {
+        setNotice(`Failed to open ${basename(path)}: ${errorMessage(e)}`);
+        return;
+      }
+      if (content.kind === "binary") {
+        setNotice(`Cannot preview binary file: ${basename(path)}`);
+        return;
+      }
+      if (content.kind === "too_large") {
+        setNotice(`Cannot preview file (too large): ${basename(path)}`);
+        return;
+      }
+      setDocs((d) => ({ ...d, [path]: content.text }));
+      openTab({
+        path,
+        name: basename(path),
+        languageId: languageIdForFile(path),
+        dirty: false,
+      });
+    },
+    [openTab, setActive]
+  );
 
   async function restoreTabs(paths: string[], activePath: string | null) {
     for (const path of paths) {
@@ -143,37 +146,46 @@ export default function App() {
     "help.shortcuts": () => setShortcutsOpen((o) => !o),
   });
 
-  async function openAt(path: string, line: number, matchStart: number, matchEnd: number) {
-    const isOpen = tabs.some((t) => t.path === path);
-    if (!isOpen) {
-      await openFile(path);
-    } else if (activeTabPath !== path) {
-      setActive(path);
-    }
-    setReveal({ path, line, matchStart, matchEnd, seq: ++revealSeq.current });
-  }
+  const openAt = useCallback(
+    async (path: string, line: number, matchStart: number, matchEnd: number) => {
+      const store = useWorkspaceStore.getState();
+      if (!store.tabs.some((t) => t.path === path)) {
+        await openFile(path);
+      } else if (store.activeTabPath !== path) {
+        setActive(path);
+      }
+      setReveal({ path, line, matchStart, matchEnd, seq: ++revealSeq.current });
+    },
+    [openFile, setActive]
+  );
 
-  function handleClose(path: string) {
-    const tab = tabs.find((t) => t.path === path);
-    if (tab?.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
-    closeTab(path);
-  }
+  const handleClose = useCallback(
+    (path: string) => {
+      const tab = useWorkspaceStore.getState().tabs.find((t) => t.path === path);
+      if (tab?.dirty && !confirm(`${tab.name} has unsaved changes. Close anyway?`)) return;
+      closeTab(path);
+    },
+    [closeTab]
+  );
 
-  function handleFsChange(change: FsChange) {
-    if (change.type === "delete") {
-      closeTab(change.path);
-      closeTabsUnder(change.path);
-    } else if (change.type === "rename") {
-      renameTab(change.from, change.to, basename(change.to));
-      setDocs((d) => {
-        if (!(change.from in d)) return d;
-        const next = { ...d };
-        next[change.to] = next[change.from];
-        delete next[change.from];
-        return next;
-      });
-    }
-  }
+  const handleFsChange = useCallback(
+    (change: FsChange) => {
+      if (change.type === "delete") {
+        closeTab(change.path);
+        closeTabsUnder(change.path);
+      } else if (change.type === "rename") {
+        renameTab(change.from, change.to, basename(change.to));
+        setDocs((d) => {
+          if (!(change.from in d)) return d;
+          const next = { ...d };
+          next[change.to] = next[change.from];
+          delete next[change.from];
+          return next;
+        });
+      }
+    },
+    [closeTab, closeTabsUnder, renameTab]
+  );
 
   async function handleSave(path: string, doc: string) {
     try {
