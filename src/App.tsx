@@ -118,9 +118,13 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return; // don't persist until restore has run (avoids clobbering with [])
-    if (root) {
+    if (!root) return;
+    // Debounce so the synchronous localStorage write stays off the switch
+    // critical path; rapid tab switches coalesce into one write.
+    const handle = setTimeout(() => {
       saveOpenTabs({ root, paths: tabs.map((t) => t.path), activePath: activeTabPath });
-    }
+    }, 300);
+    return () => clearTimeout(handle);
   }, [hydrated, root, tabs, activeTabPath]);
 
   function activate(view: "explorer" | "search") {
