@@ -54,6 +54,12 @@ export default function App() {
 
   async function openFile(path: string) {
     setNotice(null);
+    // Already open — just focus the tab. Re-reading would round-trip the IPC
+    // for nothing and clobber any unsaved edits in that tab with disk contents.
+    if (tabs.some((t) => t.path === path)) {
+      setActive(path);
+      return;
+    }
     let content;
     try {
       content = await readFile(path);
