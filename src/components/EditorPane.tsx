@@ -63,6 +63,11 @@ export function EditorPane({
     currentPathRef.current = activePath;
     cacheRef.current.set(activePath, view.state);
     p.onCursorChange?.(cursorInfo(view.state));
+    // The view is now long-lived (created once, never remounted on switch). If
+    // it's created before the flex container has its final height, CodeMirror
+    // measures ~0 and renders a single line until something forces a re-measure.
+    // Force one on the next frame so a mis-timed initial measurement self-heals.
+    view.requestMeasure();
     return () => {
       const cur = currentPathRef.current;
       if (cur) propsRef.current.onPersist?.(cur, view.state.doc.toString());
