@@ -75,20 +75,27 @@ export function SearchPanel({ onOpenMatch, active = false }: Props) {
     }
   }
 
+  function openMatchAt(i: number) {
+    const m = flat[i];
+    if (m) onOpenMatch(m.path, m.line, m.matchStart, m.matchEnd);
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.nativeEvent.isComposing) return; // don't hijack keys mid-IME-composition
     if (flat.length === 0) return;
-    if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, flat.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex((i) => Math.max(i - 1, 0));
+      const next =
+        e.key === "ArrowDown"
+          ? Math.min(selectedIndex + 1, flat.length - 1)
+          : Math.max(selectedIndex - 1, 0);
+      if (next === selectedIndex) return; // already at the edge
+      setSelectedIndex(next);
+      openMatchAt(next); // arrow navigation also jumps to the file + line
     } else if (e.key === "Enter") {
       if (selectedIndex < 0 || selectedIndex >= flat.length) return;
       e.preventDefault();
-      const m = flat[selectedIndex];
-      onOpenMatch(m.path, m.line, m.matchStart, m.matchEnd);
+      openMatchAt(selectedIndex);
     }
   }
 
@@ -160,7 +167,13 @@ export function SearchPanel({ onOpenMatch, active = false }: Props) {
                       className={`flex items-center gap-2.5 h-6 pl-6 pr-1.5 rounded-md cursor-pointer font-mono text-[12px] ${
                         selected ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/[0.04]"
                       }`}
-                      onClick={() => onOpenMatch(file.path, m.line_number, m.match_start, m.match_end)}
+                      // Keep keyboard focus in the search input on click so arrow
+                      // navigation continues; clicking also sets the selection.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedIndex(idx);
+                        onOpenMatch(file.path, m.line_number, m.match_start, m.match_end);
+                      }}
                     >
                       <span className="text-tx-faint min-w-[22px] text-right">{m.line_number}</span>
                       <span className="truncate whitespace-pre">

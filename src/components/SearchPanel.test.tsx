@@ -39,6 +39,16 @@ const navResp = {
   regex_error: null,
 };
 
+const twoFileResp = {
+  files: [
+    { path: "/proj/a.ts", rel_path: "a.ts", matches: [{ line_number: 1, preview: "aaa", highlight_ranges: [[0, 3]] as [number, number][], match_start: 0, match_end: 3 }] },
+    { path: "/proj/b.ts", rel_path: "b.ts", matches: [{ line_number: 2, preview: "bbb", highlight_ranges: [[0, 3]] as [number, number][], match_start: 0, match_end: 3 }] },
+  ],
+  total_matches: 2,
+  truncated: false,
+  regex_error: null,
+};
+
 describe("SearchPanel", () => {
   beforeEach(() => searchWorkspace.mockReset());
 
@@ -113,6 +123,59 @@ describe("SearchPanel", () => {
     await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
     await screen.findByText(/0 results/);
     await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(onOpenMatch).not.toHaveBeenCalled();
+  });
+
+  it("opens the match on arrow navigation (not only on Enter)", async () => {
+    searchWorkspace.mockResolvedValue(navResp);
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    await userEvent.type(screen.getByPlaceholderText(/search/i), "x");
+    await screen.findByText("one");
+    await userEvent.keyboard("{ArrowDown}"); // moves to + opens the first match
+    expect(onOpenMatch).toHaveBeenCalledWith("/proj/a.ts", 1, 0, 3);
+  });
+
+  it("clicking a match selects it so arrow nav continues from there", async () => {
+    searchWorkspace.mockResolvedValue(navResp); // matches: "one" (line 1), "two" (line 2)
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    const input = screen.getByPlaceholderText(/search/i);
+    await userEvent.type(input, "x");
+    await screen.findByText("one");
+    await userEvent.click(screen.getByText("one")); // open + select index 0
+    expect(onOpenMatch).toHaveBeenLastCalledWith("/proj/a.ts", 1, 0, 3);
+    input.focus();
+    await userEvent.keyboard("{ArrowDown}{Enter}"); // 0 → 1 → opens "two"
+    expect(onOpenMatch).toHaveBeenLastCalledWith("/proj/a.ts", 2, 0, 3);
+  });
+
+  it("skips a collapsed file's matches when navigating", async () => {
+    searchWorkspace.mockResolvedValue(twoFileResp);
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    const input = screen.getByPlaceholderText(/search/i);
+    await userEvent.type(input, "x");
+    await screen.findByText("aaa");
+    await userEvent.click(screen.getByText("a.ts")); // collapse the first file
+    expect(screen.queryByText("aaa")).not.toBeInTheDocument();
+    input.focus();
+    await userEvent.keyboard("{ArrowDown}{Enter}"); // first navigable match is now b.ts's
+    expect(onOpenMatch).toHaveBeenCalledWith("/proj/b.ts", 2, 0, 3);
+  });
+
+  it("resets the selection when a file is collapsed", async () => {
+    searchWorkspace.mockResolvedValue(twoFileResp);
+    const onOpenMatch = vi.fn();
+    render(<SearchPanel onOpenMatch={onOpenMatch} active />);
+    const input = screen.getByPlaceholderText(/search/i);
+    await userEvent.type(input, "x");
+    await screen.findByText("aaa");
+    await userEvent.keyboard("{ArrowDown}"); // select the a.ts match (index 0) — also opens it
+    await userEvent.click(screen.getByText("a.ts")); // collapse it → selection resets to -1
+    onOpenMatch.mockClear();
+    input.focus();
+    await userEvent.keyboard("{Enter}"); // nothing selected → no open (would open if not reset)
     expect(onOpenMatch).not.toHaveBeenCalled();
   });
 });

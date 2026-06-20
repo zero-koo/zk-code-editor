@@ -85,7 +85,9 @@ export function EditorPane({ path, languageId, initialDoc, onChange, onSave, onP
       selection: EditorSelection.range(from, to),
       effects: EditorView.scrollIntoView(from, { y: "center" }),
     });
-    view.focus();
+    // Intentionally do NOT focus the editor: revealing a search match keeps
+    // keyboard focus in the search panel so the user can keep navigating with
+    // arrows. They click into the editor when they want to edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.seq]);
 
