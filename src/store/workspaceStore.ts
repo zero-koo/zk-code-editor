@@ -67,9 +67,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setActive: (path) => set({ activeTabPath: path }),
 
   setDirty: (path, dirty) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.path === path ? { ...t, dirty } : t)),
-    })),
+    set((s) => {
+      const tab = s.tabs.find((t) => t.path === path);
+      if (!tab || tab.dirty === dirty) return s; // unchanged → no new array, no re-render
+      return { tabs: s.tabs.map((t) => (t.path === path ? { ...t, dirty } : t)) };
+    }),
 
   renameTab: (oldPath, newPath, newName) =>
     set((s) => ({
