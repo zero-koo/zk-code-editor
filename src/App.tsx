@@ -15,7 +15,7 @@ import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
 import { basename, relativePath } from "./lib/paths";
 import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
-import type { CursorInfo } from "./lib/cursorInfo";
+import { useCursorStore } from "./store/cursorStore";
 
 function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -31,7 +31,8 @@ export default function App() {
     { path: string; line: number; matchStart: number; matchEnd: number; seq: number } | null
   >(null);
   const revealSeq = useRef(0);
-  const [cursor, setCursor] = useState<CursorInfo | null>(null);
+  // Stable setter; the cursor value lives in its own store (only StatusBar reads it).
+  const setCursor = useCursorStore((s) => s.setCursor);
   const hydratedRef = useRef(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -245,7 +246,6 @@ export default function App() {
         <StatusBar
           path={activeTab ? (root ? relativePath(root, activeTab.path) : activeTab.path) : null}
           languageId={activeTab?.languageId ?? null}
-          cursor={activeTab ? cursor : null}
         />
       </div>
       </div>
