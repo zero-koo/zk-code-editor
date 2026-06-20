@@ -6,7 +6,8 @@ describe("EditorPane", () => {
   it("renders a left line-number gutter for each line", () => {
     const { container } = render(
       <EditorPane
-        path="/p/multi.ts"
+        activePath="/p/multi.ts"
+        openPaths={["/p/multi.ts"]}
         languageId="typescript"
         initialDoc={"first\nsecond\nthird"}
         onChange={() => {}}
@@ -26,16 +27,14 @@ describe("EditorPane", () => {
   it("renders the document text into the editor", () => {
     const { container } = render(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc="const x = 1;"
         onChange={() => {}}
         onSave={() => {}}
       />
     );
-    // Syntax highlighting splits the line into token <span>s, so the document
-    // text lives across multiple nodes inside .cm-line. Assert on the line's
-    // full text content to verify the document was rendered into the editor.
     const line = container.querySelector(".cm-line") as HTMLElement;
     expect(line).toBeInTheDocument();
     expect(line.textContent).toMatch(/const x = 1;/);
@@ -45,7 +44,8 @@ describe("EditorPane", () => {
     const onChange = vi.fn();
     const { container } = render(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc=""
         onChange={onChange}
@@ -62,7 +62,8 @@ describe("EditorPane", () => {
   it("reveals a match: selects the range and is clamped to the doc", async () => {
     const { container, rerender } = render(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc={"line one\nline two\nline three"}
         onChange={() => {}}
@@ -71,10 +72,10 @@ describe("EditorPane", () => {
     );
     const { EditorView } = await import("@codemirror/view");
     const view = EditorView.findFromDOM(container.querySelector(".cm-editor") as HTMLElement)!;
-    // reveal line 2, match offsets 5..8 ("two")
     rerender(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc={"line one\nline two\nline three"}
         onChange={() => {}}
@@ -92,7 +93,8 @@ describe("EditorPane", () => {
     const onPersist = vi.fn();
     const { unmount, container } = render(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc="start"
         onChange={() => {}}
@@ -111,7 +113,8 @@ describe("EditorPane", () => {
     const onCursorChange = vi.fn();
     const { container } = render(
       <EditorPane
-        path="/p/a.ts"
+        activePath="/p/a.ts"
+        openPaths={["/p/a.ts"]}
         languageId="typescript"
         initialDoc={"abc\ndef"}
         onChange={() => {}}
@@ -125,5 +128,66 @@ describe("EditorPane", () => {
     onCursorChange.mockClear();
     view.dispatch({ selection: { anchor: 5 } }); // offset 5 → line 2 of "abc\ndef"
     expect(onCursorChange).toHaveBeenCalledWith(expect.objectContaining({ line: 2 }));
+  });
+
+  // --- persistent-view behavior (new) ---
+
+  it("keeps the same EditorView DOM across a file switch (no remount)", () => {
+    const props = {
+      activePath: "/a.ts",
+      openPaths: ["/a.ts"],
+      languageId: "typescript",
+      initialDoc: "alpha",
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    };
+    const { container, rerender } = render(<EditorPane {...props} />);
+    const before = container.querySelector(".cm-editor");
+    expect(before).not.toBeNull();
+    rerender(
+      <EditorPane {...props} activePath="/b.ts" openPaths={["/a.ts", "/b.ts"]} initialDoc="beta" />
+    );
+    const after = container.querySelector(".cm-editor");
+    expect(after).toBe(before); // same node → view was not destroyed/recreated
+  });
+
+  it("swaps the document content on a file switch", async () => {
+    const props = {
+      activePath: "/a.ts",
+      openPaths: ["/a.ts"],
+      languageId: "typescript",
+      initialDoc: "alpha",
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+    };
+    const { container, rerender } = render(<EditorPane {...props} />);
+    rerender(
+      <EditorPane {...props} activePath="/b.ts" openPaths={["/a.ts", "/b.ts"]} initialDoc="beta" />
+    );
+    const { EditorView } = await import("@codemirror/view");
+    const view = EditorView.findFromDOM(container.querySelector(".cm-editor") as HTMLElement)!;
+    expect(view.state.doc.toString()).toBe("beta");
+  });
+
+  it("persists the outgoing doc and reports the cursor on switch", () => {
+    const onPersist = vi.fn();
+    const onCursorChange = vi.fn();
+    const props = {
+      activePath: "/a.ts",
+      openPaths: ["/a.ts"],
+      languageId: "typescript",
+      initialDoc: "alpha",
+      onChange: vi.fn(),
+      onSave: vi.fn(),
+      onPersist,
+      onCursorChange,
+    };
+    const { rerender } = render(<EditorPane {...props} />);
+    onCursorChange.mockClear();
+    rerender(
+      <EditorPane {...props} activePath="/b.ts" openPaths={["/a.ts", "/b.ts"]} initialDoc="beta" />
+    );
+    expect(onPersist).toHaveBeenCalledWith("/a.ts", "alpha");
+    expect(onCursorChange).toHaveBeenCalled(); // setState does not fire it; we report explicitly
   });
 });

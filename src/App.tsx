@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { ActivityBar } from "./components/ActivityBar";
 import { FileExplorer } from "./components/FileExplorer";
@@ -49,6 +49,7 @@ export default function App() {
   const closeTabsUnder = useWorkspaceStore((s) => s.closeTabsUnder);
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
+  const openPaths = useMemo(() => tabs.map((t) => t.path), [tabs]);
 
   const persistDoc = (p: string, doc: string) =>
     setDocs((d) => ({ ...d, [p]: doc }));
@@ -234,8 +235,8 @@ export default function App() {
         )}
         {activeTab ? (
           <EditorPane
-            key={activeTab.path}
-            path={activeTab.path}
+            activePath={activeTab.path}
+            openPaths={openPaths}
             languageId={activeTab.languageId}
             initialDoc={docs[activeTab.path] ?? ""}
             onChange={() => setDirty(activeTab.path, true)}
