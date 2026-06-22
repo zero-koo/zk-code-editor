@@ -1,7 +1,7 @@
-import { FolderOpenIcon, SearchIcon, KeyboardIcon } from "./icons";
+import { FolderOpenIcon, SearchIcon, KeyboardIcon, GitBranchIcon } from "./icons";
 import { IconButton } from "./IconButton";
 
-type View = "explorer" | "search";
+type View = "explorer" | "search" | "git";
 
 interface Props {
   activeView: View;
@@ -11,7 +11,8 @@ interface Props {
 }
 
 export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShortcuts }: Props) {
-  const isActive = (v: View) => sidebarVisible && activeView === v;
+  const isActive = (v: View) =>
+    v === "git" ? activeView === "git" : sidebarVisible && activeView === v;
   return (
     <div className="w-[54px] shrink-0 bg-titlebar border-r border-bd-2 flex flex-col items-center py-2.5 gap-1">
       <button
@@ -39,6 +40,19 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShor
           <span className="absolute left-[-10px] top-[9px] w-[2.5px] h-5 rounded bg-accent" />
         )}
         <SearchIcon size={19} strokeWidth={1.8} />
+      </button>
+      <button
+        aria-label="Source Control"
+        aria-pressed={isActive("git")}
+        onClick={() => onActivate("git")}
+        className={`relative w-[38px] h-[38px] rounded-[9px] flex items-center justify-center ${
+          isActive("git") ? "bg-accent/15 text-accent-soft" : "text-tx-3 hover:bg-white/5 hover:text-tx-bright"
+        }`}
+      >
+        {isActive("git") && (
+          <span className="absolute left-[-10px] top-[9px] w-[2.5px] h-5 rounded bg-accent" />
+        )}
+        <GitBranchIcon size={19} strokeWidth={1.8} />
       </button>
       <IconButton
         label="Keyboard Shortcuts"

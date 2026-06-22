@@ -7,10 +7,10 @@ interface WorkspaceState {
   tabs: Tab[];
   activeTabPath: string | null;
   expandedDirs: Set<string>;
-  activeView: "explorer" | "search";
+  activeView: "explorer" | "search" | "git";
 
   setRoot: (root: string) => void;
-  setActiveView: (view: "explorer" | "search") => void;
+  setActiveView: (view: "explorer" | "search" | "git") => void;
   openTab: (tab: Tab) => void;
   closeTab: (path: string) => void;
   closeTabsUnder: (dir: string) => void;

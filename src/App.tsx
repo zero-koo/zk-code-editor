@@ -7,6 +7,7 @@ import type { FsChange } from "./components/FileTreeNode";
 import { TabBar } from "./components/TabBar";
 import { EditorPane } from "./components/EditorPane";
 import { StatusBar } from "./components/StatusBar";
+import { DiffView } from "./components/DiffView";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { InfoIcon, FileIcon } from "./components/icons";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
@@ -132,7 +133,12 @@ export default function App() {
     return () => clearTimeout(handle);
   }, [hydrated, root, tabs, activeTabPath]);
 
-  function activate(view: "explorer" | "search") {
+  function activate(view: "explorer" | "search" | "git") {
+    if (view === "git") {
+      setActiveView("git");
+      setSidebarVisible(false);
+      return;
+    }
     if (activeView === view && sidebarVisible) {
       setSidebarVisible(false);
     } else {
@@ -221,45 +227,50 @@ export default function App() {
         </>
       )}
       <div className="flex-1 min-w-0 flex flex-col bg-bg-2">
-        <TabBar
-          tabs={tabs}
-          activePath={activeTabPath}
-          onSelect={setActive}
-          onClose={handleClose}
-        />
-        {notice && (
-          <div className="flex items-start gap-3 m-2 rounded-[11px] border border-bd-1 bg-bg-1 px-3.5 py-3 text-tx-bright text-[12.5px]">
-            <InfoIcon size={16} strokeWidth={1.8} className="text-accent shrink-0 mt-px" />
-            <span>{notice}</span>
-          </div>
-        )}
-        {activeTab ? (
-          <EditorPane
-            activePath={activeTab.path}
-            openPaths={openPaths}
-            languageId={activeTab.languageId}
-            initialDoc={docs[activeTab.path] ?? ""}
-            onChange={() => setDirty(activeTab.path, true)}
-            onSave={(doc) => handleSave(activeTab.path, doc)}
-            onPersist={persistDoc}
-            onCursorChange={setCursor}
-            reveal={reveal && reveal.path === activeTab.path ? reveal : undefined}
+        <div className={activeView === "git" ? "hidden" : "flex flex-col flex-1 min-h-0"}>
+          <TabBar
+            tabs={tabs}
+            activePath={activeTabPath}
+            onSelect={setActive}
+            onClose={handleClose}
           />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-center">
-            <div className="w-10 h-10 rounded-[11px] bg-bg-3 text-tx-faint flex items-center justify-center">
-              <FileIcon size={20} />
+          {notice && (
+            <div className="flex items-start gap-3 m-2 rounded-[11px] border border-bd-1 bg-bg-1 px-3.5 py-3 text-tx-bright text-[12.5px]">
+              <InfoIcon size={16} strokeWidth={1.8} className="text-accent shrink-0 mt-px" />
+              <span>{notice}</span>
             </div>
-            <div className="text-[13.5px] text-tx-bright font-medium">No file open</div>
-            <div className="text-xs text-tx-3">
-              Select a file in the explorer to start editing
+          )}
+          {activeTab ? (
+            <EditorPane
+              activePath={activeTab.path}
+              openPaths={openPaths}
+              languageId={activeTab.languageId}
+              initialDoc={docs[activeTab.path] ?? ""}
+              onChange={() => setDirty(activeTab.path, true)}
+              onSave={(doc) => handleSave(activeTab.path, doc)}
+              onPersist={persistDoc}
+              onCursorChange={setCursor}
+              reveal={reveal && reveal.path === activeTab.path ? reveal : undefined}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-center">
+              <div className="w-10 h-10 rounded-[11px] bg-bg-3 text-tx-faint flex items-center justify-center">
+                <FileIcon size={20} />
+              </div>
+              <div className="text-[13.5px] text-tx-bright font-medium">No file open</div>
+              <div className="text-xs text-tx-3">
+                Select a file in the explorer to start editing
+              </div>
             </div>
-          </div>
-        )}
-        <StatusBar
-          path={activeTab ? (root ? relativePath(root, activeTab.path) : activeTab.path) : null}
-          languageId={activeTab?.languageId ?? null}
-        />
+          )}
+          <StatusBar
+            path={activeTab ? (root ? relativePath(root, activeTab.path) : activeTab.path) : null}
+            languageId={activeTab?.languageId ?? null}
+          />
+        </div>
+        <div className={activeView === "git" ? "flex flex-col flex-1 min-h-0" : "hidden"}>
+          <DiffView root={root} active={activeView === "git"} />
+        </div>
       </div>
       </div>
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
