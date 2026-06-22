@@ -51,13 +51,13 @@ pub enum FileContent {
     TooLarge,
 }
 
-pub fn read_file_impl(root: &Path, path: &str) -> Result<FileContent, AppError> {
-    let file = resolve_in_workspace(root, path)?;
-    let meta = std::fs::metadata(&file)?;
+/// Classifies a file at an absolute path as Text/Binary/TooLarge.
+pub fn detect_file(file: &Path) -> Result<FileContent, AppError> {
+    let meta = std::fs::metadata(file)?;
     if meta.len() > MAX_TEXT_BYTES {
         return Ok(FileContent::TooLarge);
     }
-    let bytes = std::fs::read(&file)?;
+    let bytes = std::fs::read(file)?;
     if bytes.contains(&0) {
         return Ok(FileContent::Binary);
     }
@@ -65,6 +65,11 @@ pub fn read_file_impl(root: &Path, path: &str) -> Result<FileContent, AppError> 
         Ok(text) => Ok(FileContent::Text(text)),
         Err(_) => Ok(FileContent::Binary),
     }
+}
+
+pub fn read_file_impl(root: &Path, path: &str) -> Result<FileContent, AppError> {
+    let file = resolve_in_workspace(root, path)?;
+    detect_file(&file)
 }
 
 #[tauri::command]

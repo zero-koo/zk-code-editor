@@ -1,4 +1,8 @@
+use crate::error::{AppError, ErrorCode};
+use crate::fs_ops::{detect_file, FileContent};
 use serde::Serialize;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct DiffLine {
@@ -197,9 +201,191 @@ pub fn parse_diff(diff: &str) -> Vec<FileDiff> {
     files
 }
 
+/// Runs `git -C <root> <args>` and returns the captured output.
+fn git_output(root: &str, args: &[&str]) -> Result<std::process::Output, AppError> {
+    Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .map_err(|e| AppError::new(ErrorCode::Io, format!("failed to run git: {e}")))
+}
+
+fn is_inside_repo(root: &str) -> bool {
+    match git_output(root, &["rev-parse", "--is-inside-work-tree"]) {
+        Ok(out) => out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true",
+        Err(_) => false,
+    }
+}
+
+fn current_branch(root: &str) -> Option<String> {
+    if let Ok(out) = git_output(root, &["symbolic-ref", "--short", "HEAD"]) {
+        if out.status.success() {
+            let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !b.is_empty() {
+                return Some(b);
+            }
+        }
+    }
+    if let Ok(out) = git_output(root, &["rev-parse", "--short", "HEAD"]) {
+        if out.status.success() {
+            let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !b.is_empty() {
+                return Some(b);
+            }
+        }
+    }
+    None
+}
+
+fn has_head(root: &str) -> bool {
+    git_output(root, &["rev-parse", "--verify", "HEAD"])
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Synthesizes an all-additions FileDiff for an untracked file.
+fn untracked_file_diff(root: &Path, rel: &str) -> FileDiff {
+    let abs = root.join(rel);
+    let mut fd = FileDiff {
+        path: rel.to_string(),
+        old_path: None,
+        status: "untracked".to_string(),
+        additions: 0,
+        deletions: 0,
+        binary: false,
+        too_large: false,
+        hunks: Vec::new(),
+    };
+    match detect_file(&abs) {
+        Ok(FileContent::Text(text)) => {
+            let mut content: Vec<&str> = text.split('\n').collect();
+            if matches!(content.last(), Some(&"")) {
+                content.pop(); // drop the empty element from a trailing newline
+            }
+            let n = content.len() as u32;
+            fd.additions = n;
+            if n > 0 {
+                let lines = content
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| DiffLine {
+                        kind: "add".to_string(),
+                        old_no: None,
+                        new_no: Some(i as u32 + 1),
+                        text: t.to_string(),
+                    })
+                    .collect();
+                fd.hunks.push(Hunk {
+                    header: format!("@@ -0,0 +1,{n} @@"),
+                    lines,
+                });
+            }
+        }
+        Ok(FileContent::Binary) => fd.binary = true,
+        Ok(FileContent::TooLarge) => fd.too_large = true,
+        Err(_) => {}
+    }
+    fd
+}
+
+pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
+    if !is_inside_repo(root) {
+        return Ok(GitChanges {
+            is_repo: false,
+            branch: None,
+            files: Vec::new(),
+        });
+    }
+    let branch = current_branch(root);
+    let mut files: Vec<FileDiff> = Vec::new();
+
+    if has_head(root) {
+        let out = git_output(root, &["diff", "HEAD", "--no-color", "-M"])?;
+        if out.status.success() {
+            let text = String::from_utf8_lossy(&out.stdout);
+            files.extend(parse_diff(&text));
+        }
+    }
+
+    let root_path = Path::new(root);
+    let out = git_output(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    if out.status.success() {
+        let raw = String::from_utf8_lossy(&out.stdout);
+        for rel in raw.split('\0').filter(|s| !s.is_empty()) {
+            files.push(untracked_file_diff(root_path, rel));
+        }
+    }
+
+    Ok(GitChanges {
+        is_repo: true,
+        branch,
+        files,
+    })
+}
+
+#[tauri::command]
+pub async fn git_changes(root: String) -> Result<GitChanges, AppError> {
+    tauri::async_runtime::spawn_blocking(move || compute_changes(&root))
+        .await
+        .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {:?} failed", args);
+    }
+
+    #[test]
+    fn compute_changes_reports_modified_and_untracked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        // Hermetic: a global core.excludesFile could ignore u.txt, and global
+        // hooks (e.g. gitleaks) could fail the commit. Local config wins and is
+        // honored by compute_changes's own `git -C` calls.
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        // modify tracked + add untracked
+        std::fs::write(dir.join("a.txt"), "one\nTWO\n").unwrap();
+        std::fs::write(dir.join("u.txt"), "new\nfile\n").unwrap();
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.is_repo);
+        let modified = changes.files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(modified.status, "modified");
+        assert_eq!(modified.additions, 1);
+        assert_eq!(modified.deletions, 1);
+        let untracked = changes.files.iter().find(|f| f.path == "u.txt").unwrap();
+        assert_eq!(untracked.status, "untracked");
+        assert_eq!(untracked.additions, 2);
+        assert!(!untracked.hunks.is_empty());
+    }
+
+    #[test]
+    fn compute_changes_on_non_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let changes = compute_changes(tmp.path().to_str().unwrap()).unwrap();
+        assert!(!changes.is_repo);
+        assert!(changes.files.is_empty());
+    }
 
     #[test]
     fn parses_a_simple_modification() {
