@@ -1,5 +1,6 @@
 mod error;
 mod fs_ops;
+mod git;
 mod search;
 mod workspace;
 
