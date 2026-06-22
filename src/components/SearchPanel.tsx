@@ -1,6 +1,7 @@
 import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { searchWorkspace } from "../api/fs";
-import type { SearchResponse } from "../api/types";
+import type { FileMatches, LineMatch, SearchResponse } from "../api/types";
 import { splitHighlights } from "../lib/highlight";
 import { SectionLabel } from "./SectionLabel";
 import { SidebarPanel } from "./SidebarPanel";
@@ -18,6 +19,14 @@ interface FlatMatch {
   matchEnd: number;
 }
 
+// A single virtualized row: either a file header or one match line.
+type Row =
+  | { kind: "header"; file: FileMatches }
+  | { kind: "match"; file: FileMatches; match: LineMatch; flatIndex: number };
+
+const HEADER_H = 26;
+const MATCH_H = 24;
+
 export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = false }: Props) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -27,7 +36,7 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const seqRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const selectedRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (active) inputRef.current?.focus();
@@ -50,11 +59,6 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
     return () => clearTimeout(handle);
   }, [query, caseSensitive, regex]);
 
-  // Keep the selected row visible.
-  useEffect(() => {
-    selectedRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedIndex]);
-
   function toggleCollapse(path: string) {
     setSelectedIndex(-1); // the flat list changes when a group folds
     setCollapsed((prev) => {
@@ -64,16 +68,39 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
     });
   }
 
-  // Flat list of navigable matches — non-collapsed files, in display order.
+  // Flatten the grouped results into one row list for virtualization. `flat` is
+  // the navigable subset (match rows only); `flatToRow` maps a flat index back
+  // to its row index so keyboard navigation can scroll it into view.
+  const rows: Row[] = [];
   const flat: FlatMatch[] = [];
+  const flatToRow: number[] = [];
   if (response) {
     for (const file of response.files) {
+      rows.push({ kind: "header", file });
       if (collapsed.has(file.path)) continue;
       for (const m of file.matches) {
+        const flatIndex = flat.length;
         flat.push({ path: file.path, line: m.line_number, matchStart: m.match_start, matchEnd: m.match_end });
+        flatToRow.push(rows.length);
+        rows.push({ kind: "match", file, match: m, flatIndex });
       }
     }
   }
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => (rows[i].kind === "header" ? HEADER_H : MATCH_H),
+    overscan: 12,
+  });
+
+  // Keep the selected match visible as it moves.
+  useEffect(() => {
+    if (selectedIndex < 0) return;
+    const rowIdx = flatToRow[selectedIndex];
+    if (rowIdx != null) virtualizer.scrollToIndex(rowIdx, { align: "auto" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIndex]);
 
   function openMatchAt(i: number) {
     const m = flat[i];
@@ -98,9 +125,6 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
       openMatchAt(selectedIndex);
     }
   }
-
-  // Running index that mirrors `flat` construction (same files, same skip).
-  let renderIndex = -1;
 
   return (
     <SidebarPanel>
@@ -143,54 +167,62 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
         )}
       </div>
 
-      <div className="zk-scroll flex-1 overflow-auto px-1.5 pb-2.5 text-[13px]">
-        {response?.files.map((file) => {
-          const isCollapsed = collapsed.has(file.path);
-          return (
-            <div key={file.path}>
+      <div ref={scrollRef} className="zk-scroll flex-1 overflow-auto px-1.5 pb-2.5 text-[13px]">
+        <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+          {virtualizer.getVirtualItems().map((vItem) => {
+            const row = rows[vItem.index];
+            const selected = row.kind === "match" && row.flatIndex === selectedIndex;
+            return (
               <div
-                className="flex items-center gap-1.5 h-[26px] px-1.5 rounded-md cursor-pointer text-tx-bright hover:bg-white/5"
-                onClick={() => toggleCollapse(file.path)}
+                key={vItem.key}
+                data-index={vItem.index}
+                aria-selected={row.kind === "match" ? selected : undefined}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: vItem.size,
+                  transform: `translateY(${vItem.start}px)`,
+                }}
               >
-                <span className="flex-1 truncate text-tx-1">{file.rel_path}</span>
-                <span className="text-[10.5px] text-tx-2 bg-white/[0.06] rounded-full px-1.5">{file.matches.length}</span>
+                {row.kind === "header" ? (
+                  <div
+                    className="flex items-center gap-1.5 h-[26px] px-1.5 rounded-md cursor-pointer text-tx-bright hover:bg-white/5"
+                    onClick={() => toggleCollapse(row.file.path)}
+                  >
+                    <span className="flex-1 truncate text-tx-1">{row.file.rel_path}</span>
+                    <span className="text-[10.5px] text-tx-2 bg-white/[0.06] rounded-full px-1.5">{row.file.matches.length}</span>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex items-center gap-2.5 h-6 pl-6 pr-1.5 rounded-md cursor-pointer font-mono text-[12px] ${
+                      selected ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/[0.04]"
+                    }`}
+                    // Keep keyboard focus in the search input on click so arrow
+                    // navigation continues; clicking also sets the selection.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setSelectedIndex(row.flatIndex);
+                      onOpenMatch(row.file.path, row.match.line_number, row.match.match_start, row.match.match_end);
+                    }}
+                  >
+                    <span className="text-tx-faint min-w-[22px] text-right">{row.match.line_number}</span>
+                    <span className="truncate whitespace-pre">
+                      {splitHighlights(row.match.preview, row.match.highlight_ranges).map((seg, j) =>
+                        seg.hl ? (
+                          <span key={j} className="bg-accent/30 text-white rounded-[2px]">{seg.text}</span>
+                        ) : (
+                          <span key={j}>{seg.text}</span>
+                        )
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
-              {!isCollapsed &&
-                file.matches.map((m, i) => {
-                  const idx = ++renderIndex; // aligns with `flat` (same order/skip)
-                  const selected = idx === selectedIndex;
-                  return (
-                    <div
-                      key={i}
-                      ref={selected ? selectedRef : undefined}
-                      aria-selected={selected}
-                      className={`flex items-center gap-2.5 h-6 pl-6 pr-1.5 rounded-md cursor-pointer font-mono text-[12px] ${
-                        selected ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/[0.04]"
-                      }`}
-                      // Keep keyboard focus in the search input on click so arrow
-                      // navigation continues; clicking also sets the selection.
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setSelectedIndex(idx);
-                        onOpenMatch(file.path, m.line_number, m.match_start, m.match_end);
-                      }}
-                    >
-                      <span className="text-tx-faint min-w-[22px] text-right">{m.line_number}</span>
-                      <span className="truncate whitespace-pre">
-                        {splitHighlights(m.preview, m.highlight_ranges).map((seg, j) =>
-                          seg.hl ? (
-                            <span key={j} className="bg-accent/30 text-white rounded-[2px]">{seg.text}</span>
-                          ) : (
-                            <span key={j}>{seg.text}</span>
-                          )
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </SidebarPanel>
   );
