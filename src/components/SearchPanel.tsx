@@ -42,6 +42,19 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
     if (active) inputRef.current?.focus();
   }, [active]);
 
+  // Drive the query from the native `input` event, which fires on every
+  // keystroke INCLUDING during IME composition. React's onChange is suppressed
+  // mid-composition, so Korean input previously needed Enter to commit before a
+  // search would run. The input is left uncontrolled (no `value` prop) so
+  // updating `query` never writes back into the field and disrupts composition.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const onInput = () => setQuery(el.value);
+    el.addEventListener("input", onInput);
+    return () => el.removeEventListener("input", onInput);
+  }, []);
+
   useEffect(() => {
     if (query.trim() === "") {
       setResponse(null);
@@ -135,8 +148,6 @@ export const SearchPanel = memo(function SearchPanel({ onOpenMatch, active = fal
             ref={inputRef}
             className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-tx-1 font-mono placeholder:text-tx-3"
             placeholder="Search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
           />
           <button
