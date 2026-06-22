@@ -53,3 +53,32 @@ export interface SearchResponse {
   truncated: boolean;
   regex_error: string | null;
 }
+
+export interface DiffLine {
+  kind: "context" | "add" | "del";
+  old_no: number | null;
+  new_no: number | null;
+  text: string;
+}
+
+export interface Hunk {
+  header: string;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  path: string;
+  old_path: string | null;
+  status: "modified" | "added" | "deleted" | "renamed" | "untracked";
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  too_large: boolean;
+  hunks: Hunk[];
+}
+
+export interface GitChanges {
+  is_repo: boolean;
+  branch: string | null;
+  files: FileDiff[];
+}
