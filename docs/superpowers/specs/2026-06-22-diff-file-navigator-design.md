@@ -31,6 +31,7 @@ DiffView (flex col)
 
 - **2단은 "파일 있는 상태"에서만.** loading / error / `!is_repo` / no-changes는 기존처럼 본문 전체폭 중앙 메시지(좌측 목록 미표시).
 - 좌측 패널 자체도 스크롤 가능(`zk-scroll`, 파일이 많을 때).
+- **높이 전파 주의**: 본문 flex row는 `flex flex-1 min-h-0`, 좌측 목록은 `shrink-0 w-56 ... overflow-auto`, 우측 diff 컨테이너는 기존 `zk-scroll flex-1 overflow-auto`를 유지해야 한다. row에 `min-h-0`가 없으면 우측 스크롤 요소 높이가 0으로 붕괴해 가상화가 깨진다.
 
 ## 3. 컴포넌트
 
@@ -81,12 +82,14 @@ export function activeFileForOffset(
 ## 6. 테스트
 - **순수 단위**: `activeFileForOffset` — 오프셋 0 → 첫 파일; 두 번째 파일 top 직전/직후 경계; 마지막 파일; 빈 배열 → null.
 - **컴포넌트(DiffView.test.tsx)**: 좌측 목록이 모든 변경 파일을 렌더; 특정(뒤쪽) 파일 클릭 시 diff 스크롤 컨테이너의 `scrollTop`이 0보다 커짐(클릭→스크롤 동작). 기존 DiffView 테스트(렌더/접기/상태)는 유지. (스크롤 위치→하이라이트 자동 동기화의 픽셀 정확도는 jsdom 한계로 수동 검증; 로직은 `activeFileForOffset` 단위 테스트로 커버.)
+  - **테스트 인프라(필수)**: jsdom엔 `Element.prototype.scrollTo`가 없고 `@tanstack/react-virtual`의 `scrollToIndex`는 `scrollElement.scrollTo({top})`를 호출하므로(존재하지 않으면 no-op) `scrollTop`이 갱신되지 않는다. `src/test/setup.ts`에 폴리필 추가: `Element.prototype.scrollTo`를 `function(o){ if (o && typeof o==='object' && o.top!=null) this.scrollTop = o.top; }`로 정의(기존 `scrollIntoView`/ResizeObserver 스텁 선례와 동일 위치). 그래야 클릭→`scrollTop>0` 단언이 성립. 테스트 픽스처는 클릭 대상이 측정 범위(overscan 16 + offsetHeight 800 스텁) 안에 들도록 소수 파일로 구성.
 - **수동**: 실제 저장소에서 클릭 점프 + 스크롤 시 활성 하이라이트 추적.
 
 ## 7. 변경 범위
 - `src/components/DiffView.tsx`: 좌측 `DiffFileList` 렌더(같은 파일 내 컴포넌트로 정의), `pathToRowIndex`/`fileOffsets` 구성, `activeFileForOffset` 사용, 클릭 핸들러(virtualizer.scrollToIndex), 2단 레이아웃(파일 있는 상태에서만).
 - `src/lib/diffNav.ts`(신설): 순수 `activeFileForOffset` + 단위 테스트 `src/lib/diffNav.test.ts`.
 - `src/components/DiffView.test.tsx`: 네비게이터 렌더/클릭-스크롤 테스트 추가.
+- `src/test/setup.ts`: `Element.prototype.scrollTo` 폴리필 추가(§6 참고; 클릭-스크롤 단언용).
 - 백엔드·타입·스토어 변경 없음.
 
 ## 8. Non-Goals (재확인)
