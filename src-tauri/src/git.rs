@@ -44,11 +44,17 @@ fn strip_ab(s: &str) -> Option<String> {
     Some(p.to_string())
 }
 
-/// Parses `@@ -oldStart[,n] +newStart[,n] @@` into (old_start, new_start).
+/// Parses `@@ -oldStart[,n] +newStart[,n] @@ [context]` into (old_start, new_start).
+/// Only the range section between the `@@` markers is scanned, so a trailing
+/// function-context (which may begin a token with `-`/`+`) can't corrupt it.
 fn parse_hunk_header(line: &str) -> (u32, u32) {
+    let inner = line
+        .strip_prefix("@@ ")
+        .and_then(|r| r.split(" @@").next())
+        .unwrap_or(line);
     let mut old_start = 0u32;
     let mut new_start = 0u32;
-    for tok in line.split_whitespace() {
+    for tok in inner.split_whitespace() {
         if let Some(t) = tok.strip_prefix('-') {
             old_start = t.split(',').next().unwrap_or("0").parse().unwrap_or(0);
         } else if let Some(t) = tok.strip_prefix('+') {
@@ -300,6 +306,18 @@ Binary files a/img.png and b/img.png differ\n";
         let f = parse_diff(single);
         assert_eq!(f[0].hunks[0].lines[0].old_no, Some(1));
         assert_eq!(f[0].hunks[0].lines[1].new_no, Some(1));
+    }
+
+    #[test]
+    fn hunk_header_ignores_trailing_context() {
+        // trailing context that starts a token with '-' must not be parsed as the range
+        let diff = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -10,2 +20,2 @@ -spec myfun()\n ctx\n-old\n+new\n";
+        let files = parse_diff(diff);
+        let lines = &files[0].hunks[0].lines;
+        assert_eq!(lines[0].old_no, Some(10));
+        assert_eq!(lines[0].new_no, Some(20));
+        assert_eq!(lines[1].old_no, Some(11)); // "-old" after one context line
+        assert_eq!(lines[2].new_no, Some(21)); // "+new"
     }
 
     #[test]
