@@ -200,7 +200,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
-      <TitleBar title={activeTab?.name ?? null} />
+      <TitleBar title={root ? basename(root) : null} />
       <div className="flex flex-1 min-h-0">
       <ActivityBar
         activeView={activeView}

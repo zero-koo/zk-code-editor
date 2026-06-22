@@ -1,7 +1,7 @@
 import { CodeIcon } from "./icons";
 
 interface Props {
-  /** The active file name, or null when nothing is open. */
+  /** The project (workspace root) name, or null when no folder is open. */
   title: string | null;
 }
 
