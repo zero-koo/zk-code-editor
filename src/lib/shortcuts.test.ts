@@ -43,12 +43,12 @@ describe("formatCombo", () => {
 });
 
 describe("SHORTCUTS registry", () => {
-  it("contains the four v1 shortcuts with stable ids", () => {
+  it("contains the shortcuts with stable ids", () => {
     const ids = SHORTCUTS.map((s) => s.id);
-    expect(ids).toEqual(["view.explorer", "view.search", "file.save", "help.shortcuts"]);
+    expect(ids).toEqual(["view.explorer", "view.search", "view.git", "file.save", "help.shortcuts"]);
   });
   it("marks save as displayOnly and the rest as actionable", () => {
     const actionable = SHORTCUTS.filter((s) => !s.displayOnly).map((s) => s.id);
-    expect(actionable).toEqual(["view.explorer", "view.search", "help.shortcuts"]);
+    expect(actionable).toEqual(["view.explorer", "view.search", "view.git", "help.shortcuts"]);
   });
 });

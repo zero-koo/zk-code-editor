@@ -16,6 +16,7 @@ export interface Shortcut {
 export const SHORTCUTS: Shortcut[] = [
   { id: "view.explorer", label: "Show Explorer", group: "View", combo: { mod: true, shift: true, key: "e" } },
   { id: "view.search", label: "Show Search", group: "View", combo: { mod: true, shift: true, key: "f" } },
+  { id: "view.git", label: "Show Source Control", group: "View", combo: { mod: true, shift: true, key: "g" } },
   // Save is handled by CodeMirror's Mod-s keymap (see EditorPane); listed here for display only.
   { id: "file.save", label: "Save", group: "File", combo: { mod: true, key: "s" }, displayOnly: true },
   { id: "help.shortcuts", label: "Keyboard Shortcuts", group: "Help", combo: { mod: true, key: "/" } },

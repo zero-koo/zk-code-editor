@@ -150,6 +150,7 @@ export default function App() {
   useGlobalShortcuts({
     "view.explorer": () => activate("explorer"),
     "view.search": () => activate("search"),
+    "view.git": () => activate("git"),
     "help.shortcuts": () => setShortcutsOpen((o) => !o),
   });
 
