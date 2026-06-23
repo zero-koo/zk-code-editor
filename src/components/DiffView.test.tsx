@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import type { MatcherFunction } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
+// A diff line may be syntax-highlighted into several <span>s, so its text is
+// split across child nodes. Match against the row's full textContent instead.
+const wholeLine = (text: string): MatcherFunction => (_content, node) =>
+  node?.classList.contains("font-mono") === true && node?.textContent?.includes(text) === true;
 import type { GitChanges } from "../api/types";
 import { useGitStore } from "../store/gitStore";
 
@@ -21,6 +27,8 @@ const sample: GitChanges = {
       deletions: 1,
       binary: false,
       too_large: false,
+      new_text: "const neo = 2\n",
+      old_text: "const old = 2\n",
       hunks: [
         {
           header: "@@ -1,2 +1,2 @@",
@@ -41,9 +49,9 @@ const multi: GitChanges = {
   is_repo: true,
   branch: "main",
   files: [
-    { path: "src/a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("aaa") }] },
-    { path: "src/b.ts", old_path: null, status: "added", additions: 1, deletions: 0, binary: false, too_large: false, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("bbb") }] },
-    { path: "src/c.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("ccc") }] },
+    { path: "src/a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "aaa\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("aaa") }] },
+    { path: "src/b.ts", old_path: null, status: "added", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "bbb\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("bbb") }] },
+    { path: "src/c.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "ccc\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("ccc") }] },
   ],
 };
 
@@ -57,24 +65,24 @@ describe("DiffView", () => {
     gitChanges.mockResolvedValue(sample);
     render(<DiffView root="/repo" active />);
     expect(await screen.findByTestId("diff-scroll")).toBeInTheDocument();
-    expect(await screen.findByText("const neo = 2")).toBeInTheDocument();
-    expect(screen.getByText("const old = 2")).toBeInTheDocument();
+    expect(await screen.findByText(wholeLine("const neo = 2"))).toBeInTheDocument();
+    expect(screen.getByText(wholeLine("const old = 2"))).toBeInTheDocument();
   });
 
   it("collapses a file's lines when its header is clicked", async () => {
     gitChanges.mockResolvedValue(sample);
     const { container } = render(<DiffView root="/repo" active />);
-    await screen.findByText("const neo = 2");
+    await screen.findByText(wholeLine("const neo = 2"));
     const diff = container.querySelector('[data-testid="diff-scroll"]') as HTMLElement;
     await userEvent.click(within(diff).getByText("src/a.ts"));
-    expect(screen.queryByText("const neo = 2")).not.toBeInTheDocument();
+    expect(screen.queryByText(wholeLine("const neo = 2"))).not.toBeInTheDocument();
   });
 
   it("shows a binary-file notice instead of hunks", async () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
       branch: "main",
-      files: [{ path: "img.png", old_path: null, status: "modified", additions: 0, deletions: 0, binary: true, too_large: false, hunks: [] }],
+      files: [{ path: "img.png", old_path: null, status: "modified", additions: 0, deletions: 0, binary: true, too_large: false, new_text: null, old_text: null, hunks: [] }],
     });
     render(<DiffView root="/repo" active />);
     expect(await screen.findByText(/binary file/i)).toBeInTheDocument();
@@ -99,6 +107,32 @@ describe("DiffView", () => {
     expect(within(nav).getByText("src/a.ts")).toBeInTheDocument();
     expect(within(nav).getByText("src/b.ts")).toBeInTheDocument();
     expect(within(nav).getByText("src/c.ts")).toBeInTheDocument();
+  });
+
+  it("syntax-highlights a supported line into colored spans", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      files: [
+        {
+          path: "a.ts",
+          old_path: null,
+          status: "added",
+          additions: 1,
+          deletions: 0,
+          binary: false,
+          too_large: false,
+          new_text: "const x = 1\n",
+          old_text: null,
+          hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "const x = 1" }] }],
+        },
+      ],
+    });
+    const { container } = render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    const constSpan = [...container.querySelectorAll("span")].find((s) => s.textContent === "const");
+    expect(constSpan).toBeTruthy();
+    expect(constSpan!.className).toBeTruthy();
   });
 
   it("scrolls the diff when a navigator file is clicked", async () => {

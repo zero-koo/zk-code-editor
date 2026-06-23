@@ -3,6 +3,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FileDiff } from "../api/types";
 import { useGitStore } from "../store/gitStore";
 import { activeFileForOffset, type FileOffset } from "../lib/diffNav";
+import { getHighlightedLines, clearHighlightCache } from "../lib/diffHighlight";
+import { languageIdForFile } from "../lib/language";
 
 interface Props {
   root: string | null;
@@ -12,7 +14,7 @@ interface Props {
 type Row =
   | { kind: "file"; file: FileDiff }
   | { kind: "hunk"; header: string }
-  | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string }
+  | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string; langId: string; newText: string | null; oldText: string | null }
   | { kind: "info"; text: string };
 
 const ROW_H: Record<Row["kind"], number> = { file: 34, hunk: 22, line: 20, info: 28 };
@@ -37,6 +39,10 @@ export function DiffView({ root, active }: Props) {
     if (active && root) load(root);
   }, [active, root, load]);
 
+  useEffect(() => {
+    clearHighlightCache();
+  }, [changes]);
+
   function toggle(path: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -55,6 +61,7 @@ export function DiffView({ root, active }: Props) {
       fileOffsets.push({ path: file.path, top });
       rows.push({ kind: "file", file });
       top += ROW_H.file;
+      const langId = languageIdForFile(file.path);
       if (collapsed.has(file.path)) continue;
       if (file.binary) {
         rows.push({ kind: "info", text: "Binary file not shown" });
@@ -70,7 +77,7 @@ export function DiffView({ root, active }: Props) {
         rows.push({ kind: "hunk", header: h.header });
         top += ROW_H.hunk;
         for (const l of h.lines) {
-          rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text });
+          rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text, langId, newText: file.new_text, oldText: file.old_text });
           top += ROW_H.line;
         }
       }
@@ -210,12 +217,23 @@ function renderRow(row: Row, toggle: (path: string) => void) {
   }
   const bg = row.lineKind === "add" ? "bg-emerald-500/10" : row.lineKind === "del" ? "bg-red-500/10" : "";
   const marker = row.lineKind === "add" ? "+" : row.lineKind === "del" ? "−" : " ";
+  const sideText = row.lineKind === "del" ? row.oldText : row.newText;
+  const lineNo = row.lineKind === "del" ? row.oldNo : row.newNo;
+  let content: React.ReactNode = row.text;
+  if (sideText != null && lineNo != null) {
+    const segs = getHighlightedLines(sideText, row.langId)[lineNo - 1];
+    if (segs && segs.map((s) => s.text).join("") === row.text) {
+      content = segs.map((s, i) => (
+        <span key={i} className={s.className}>{s.text}</span>
+      ));
+    }
+  }
   return (
     <div className={`h-5 flex items-stretch font-mono text-[12px] ${bg}`}>
       <span className="w-10 shrink-0 text-right pr-2 text-tx-faint select-none">{row.oldNo ?? ""}</span>
       <span className="w-10 shrink-0 text-right pr-2 text-tx-faint select-none">{row.newNo ?? ""}</span>
       <span className="w-4 shrink-0 text-center text-tx-3 select-none">{marker}</span>
-      <span className="whitespace-pre flex-1 pr-3 text-tx-1">{row.text}</span>
+      <span className="whitespace-pre flex-1 pr-3 text-tx-1">{content}</span>
     </div>
   );
 }

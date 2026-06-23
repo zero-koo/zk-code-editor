@@ -74,6 +74,8 @@ export interface FileDiff {
   deletions: number;
   binary: boolean;
   too_large: boolean;
+  new_text: string | null;
+  old_text: string | null;
   hunks: Hunk[];
 }
 
