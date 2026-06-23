@@ -7,7 +7,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { python } from "@codemirror/lang-python";
 import { rust } from "@codemirror/lang-rust";
 import { yaml } from "@codemirror/lang-yaml";
-import { StreamLanguage } from "@codemirror/language";
+import { StreamLanguage, LanguageSupport, Language } from "@codemirror/language";
+import type { Parser } from "@lezer/common";
 import { go } from "@codemirror/legacy-modes/mode/go";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 
@@ -67,4 +68,12 @@ export function languageExtension(id: string): Extension {
     case "shell": return StreamLanguage.define(shell);
     default: return [];
   }
+}
+
+/** The Lezer parser for a language id, or null for plaintext/unsupported. */
+export function lezerParserFor(id: string): Parser | null {
+  const ext = languageExtension(id);
+  const lang =
+    ext instanceof LanguageSupport ? ext.language : ext instanceof Language ? ext : null;
+  return lang ? lang.parser : null;
 }

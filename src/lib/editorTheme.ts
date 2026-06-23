@@ -23,7 +23,7 @@ const zkEditorTheme = EditorView.theme(
   { dark: true }
 );
 
-const zkHighlight = HighlightStyle.define([
+export const zkHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.moduleKeyword, t.controlKeyword, t.operatorKeyword], color: "#c08cf0" },
   { tag: [t.string, t.special(t.string), t.regexp], color: "#8fce9b" },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#7aa2f7" },
