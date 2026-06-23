@@ -14,12 +14,11 @@ interface Props {
 
 type Row =
   | { kind: "file"; file: FileDiff }
-  | { kind: "hunk"; header: string }
   | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string; langId: string; newText: string | null; oldText: string | null }
   | { kind: "info"; text: string }
   | { kind: "expander"; gapKey: string; canUp: boolean; canDown: boolean; remaining: number };
 
-const ROW_H: Record<Row["kind"], number> = { file: 34, hunk: 22, line: 20, info: 28, expander: 22 };
+const ROW_H: Record<Row["kind"], number> = { file: 34, line: 20, info: 28, expander: 22 };
 const EXPAND_STEP = 20;
 
 const STATUS_BADGE: Record<FileDiff["status"], string> = {
@@ -118,8 +117,6 @@ export function DiffView({ root, active }: Props) {
       for (let hi = 0; hi < file.hunks.length; hi++) {
         emitGap(hi);
         const h = file.hunks[hi];
-        rows.push({ kind: "hunk", header: h.header });
-        top += ROW_H.hunk;
         for (const l of h.lines) {
           rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text, langId, newText: file.new_text, oldText: file.old_text });
           top += ROW_H.line;
@@ -247,13 +244,6 @@ function renderRow(row: Row, toggle: (path: string) => void, expand: (gapKey: st
         <span className="flex-1 truncate text-[12.5px] text-tx-1">{label}</span>
         {f.additions > 0 && <span className="text-[11.5px] text-emerald-400">+{f.additions}</span>}
         {f.deletions > 0 && <span className="text-[11.5px] text-red-400">−{f.deletions}</span>}
-      </div>
-    );
-  }
-  if (row.kind === "hunk") {
-    return (
-      <div className="h-[22px] px-3 font-mono text-[11.5px] text-tx-3 bg-bg-2 flex items-center truncate">
-        {row.header}
       </div>
     );
   }
