@@ -5,6 +5,7 @@ import { useGitStore } from "../store/gitStore";
 import { activeFileForOffset, type FileOffset } from "../lib/diffNav";
 import { getHighlightedLines, clearHighlightCache } from "../lib/diffHighlight";
 import { languageIdForFile } from "../lib/language";
+import { fileGaps, revealGap } from "../lib/diffExpand";
 
 interface Props {
   root: string | null;
@@ -15,9 +16,11 @@ type Row =
   | { kind: "file"; file: FileDiff }
   | { kind: "hunk"; header: string }
   | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string; langId: string; newText: string | null; oldText: string | null }
-  | { kind: "info"; text: string };
+  | { kind: "info"; text: string }
+  | { kind: "expander"; gapKey: string; canUp: boolean; canDown: boolean; remaining: number };
 
-const ROW_H: Record<Row["kind"], number> = { file: 34, hunk: 22, line: 20, info: 28 };
+const ROW_H: Record<Row["kind"], number> = { file: 34, hunk: 22, line: 20, info: 28, expander: 22 };
+const EXPAND_STEP = 20;
 
 const STATUS_BADGE: Record<FileDiff["status"], string> = {
   modified: "M",
@@ -33,6 +36,7 @@ export function DiffView({ root, active }: Props) {
   const error = useGitStore((s) => s.error);
   const load = useGitStore((s) => s.load);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Map<string, { top: number; bottom: number }>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,12 +45,25 @@ export function DiffView({ root, active }: Props) {
 
   useEffect(() => {
     clearHighlightCache();
+    setExpanded(new Map()); // line numbers change on reload → reset gap expansion
   }, [changes]);
 
   function toggle(path: string) {
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.has(path) ? next.delete(path) : next.add(path);
+      return next;
+    });
+  }
+
+  function expand(gapKey: string, dir: "up" | "down") {
+    setExpanded((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(gapKey) ?? { top: 0, bottom: 0 };
+      next.set(
+        gapKey,
+        dir === "down" ? { ...cur, top: cur.top + EXPAND_STEP } : { ...cur, bottom: cur.bottom + EXPAND_STEP }
+      );
       return next;
     });
   }
@@ -73,7 +90,34 @@ export function DiffView({ root, active }: Props) {
         top += ROW_H.info;
         continue;
       }
-      for (const h of file.hunks) {
+      const newText = file.new_text;
+      const newLines = newText != null ? newText.split("\n") : null;
+      if (newLines && newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
+      const gaps = newLines ? fileGaps(file.hunks, newLines.length) : [];
+      const gapByIndex = new Map(gaps.map((g) => [g.beforeHunkIndex, g]));
+
+      const emitGap = (idx: number) => {
+        const g = gapByIndex.get(idx);
+        if (!g || !newLines) return;
+        const key = `${file.path}#${idx}`;
+        const r = revealGap(g, expanded.get(key) ?? { top: 0, bottom: 0 }, newLines);
+        for (const rl of r.topLines) {
+          rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: file.old_text });
+          top += ROW_H.line;
+        }
+        if (r.remaining > 0) {
+          rows.push({ kind: "expander", gapKey: key, canUp: r.canUp, canDown: r.canDown, remaining: r.remaining });
+          top += ROW_H.expander;
+        }
+        for (const rl of r.bottomLines) {
+          rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: file.old_text });
+          top += ROW_H.line;
+        }
+      };
+
+      for (let hi = 0; hi < file.hunks.length; hi++) {
+        emitGap(hi);
+        const h = file.hunks[hi];
         rows.push({ kind: "hunk", header: h.header });
         top += ROW_H.hunk;
         for (const l of h.lines) {
@@ -81,6 +125,7 @@ export function DiffView({ root, active }: Props) {
           top += ROW_H.line;
         }
       }
+      emitGap(file.hunks.length);
     }
   }
 
@@ -134,7 +179,7 @@ export function DiffView({ root, active }: Props) {
                   data-index={vItem.index}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vItem.size, transform: `translateY(${vItem.start}px)` }}
                 >
-                  {renderRow(row, toggle)}
+                  {renderRow(row, toggle, expand)}
                 </div>
               );
             })}
@@ -189,7 +234,7 @@ function DiffFileList({
   );
 }
 
-function renderRow(row: Row, toggle: (path: string) => void) {
+function renderRow(row: Row, toggle: (path: string) => void, expand: (gapKey: string, dir: "up" | "down") => void) {
   if (row.kind === "file") {
     const f = row.file;
     const label = f.old_path ? `${f.old_path} → ${f.path}` : f.path;
@@ -214,6 +259,31 @@ function renderRow(row: Row, toggle: (path: string) => void) {
   }
   if (row.kind === "info") {
     return <div className="h-[28px] px-3 flex items-center text-[12px] text-tx-3 italic">{row.text}</div>;
+  }
+  if (row.kind === "expander") {
+    return (
+      <div className="h-[22px] flex items-center gap-2 px-3 font-mono text-[11px] text-tx-3 bg-bg-2">
+        {row.canDown && (
+          <button
+            aria-label="Expand down"
+            onClick={() => expand(row.gapKey, "down")}
+            className="px-1.5 rounded text-tx-2 hover:bg-white/10 hover:text-tx-bright"
+          >
+            ↓
+          </button>
+        )}
+        {row.canUp && (
+          <button
+            aria-label="Expand up"
+            onClick={() => expand(row.gapKey, "up")}
+            className="px-1.5 rounded text-tx-2 hover:bg-white/10 hover:text-tx-bright"
+          >
+            ↑
+          </button>
+        )}
+        <span>{row.remaining} hidden lines</span>
+      </div>
+    );
   }
   const bg = row.lineKind === "add" ? "bg-emerald-500/10" : row.lineKind === "del" ? "bg-red-500/10" : "";
   const marker = row.lineKind === "add" ? "+" : row.lineKind === "del" ? "−" : " ";

@@ -144,4 +144,65 @@ describe("DiffView", () => {
     await userEvent.click(within(nav).getByText("src/c.ts"));
     expect(scroller.scrollTop).toBeGreaterThan(0);
   });
+
+  it("reveals hidden context lines via the expander controls", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      files: [
+        {
+          path: "a.txt",
+          old_path: null,
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          binary: false,
+          too_large: false,
+          new_text: "x1\nx2\nx3\nx4\nx5new\nx6\nx7\nx8\n",
+          old_text: "x1\nx2\nx3\nx4\nx5old\nx6\nx7\nx8\n",
+          hunks: [
+            {
+              header: "@@ -4,3 +4,3 @@",
+              lines: [
+                { kind: "context", old_no: 4, new_no: 4, text: "x4" },
+                { kind: "del", old_no: 5, new_no: null, text: "x5old" },
+                { kind: "add", old_no: null, new_no: 5, text: "x5new" },
+                { kind: "context", old_no: 6, new_no: 6, text: "x6" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    expect(screen.queryByText("x1")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /expand up/i }));
+    expect(await screen.findByText("x1")).toBeInTheDocument();
+    expect(screen.getByText("x3")).toBeInTheDocument();
+  });
+
+  it("shows no expander for files without new_text", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      files: [
+        {
+          path: "img.bin",
+          old_path: null,
+          status: "modified",
+          additions: 0,
+          deletions: 0,
+          binary: true,
+          too_large: false,
+          new_text: null,
+          old_text: null,
+          hunks: [],
+        },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByText(/binary file/i);
+    expect(screen.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument();
+  });
 });
