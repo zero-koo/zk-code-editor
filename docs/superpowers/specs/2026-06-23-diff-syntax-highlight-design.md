@@ -28,7 +28,7 @@ old_text: Option<String>,  // HEAD(구) 내용; 텍스트일 때만. 추가/untr
 ### 2.2 채우기 (`compute_changes` 후처리)
 `parse_diff`/untracked 합성으로 `files`를 만든 뒤 각 파일에 대해:
 - **new_text**: 삭제(status "deleted")가 아니면 `detect_file(root.join(path))` → `Text(t)`면 `Some(t)`, 그 외(바이너리/초대용량/없음/에러) `None`. (untracked도 작업트리에 존재하므로 동일하게 채워짐.)
-- **old_text**: 추가(status "added")/untracked가 아니면 `git -C root show HEAD:<ref>` (ref = `old_path` 우선, 없으면 `path`). 명령 성공 시 stdout 바이트를 `classify_bytes`로 분류 → `Text(t)`면 `Some(t)`, 그 외 `None`. 실패(HEAD에 없음 등) → `None`.
+- **old_text**: 추가(status "added")/untracked가 아니면 `git -C root show HEAD:<ref>` (ref = `old_path` 우선, 없으면 `path`). 명령 성공 시 **stdout(`Vec<u8>`)을 lossy 변환 없이 그대로** `classify_bytes`로 분류 → `Text(t)`면 `Some(t)`, 그 외 `None`. 실패(HEAD에 없음 등) → `None`.
 
 ### 2.3 `fs_ops` 리팩터
 `detect_file`의 바이트 분류 부분을 `pub fn classify_bytes(bytes: Vec<u8>) -> FileContent`로 추출(크기 검사는 `bytes.len()` 기준). `detect_file`은 metadata 크기 확인 후 `classify_bytes` 호출. git.rs의 old_text가 `classify_bytes`를 재사용한다. 기존 fs_ops 동작/테스트 불변.
@@ -76,8 +76,10 @@ export function highlightToLines(text: string, languageId: string): Segment[][];
 4. 수집한 전역 세그먼트를 `\n` 기준으로 분할해 줄별 `Segment[]`로 재배열(개행마다 새 줄 시작).
 5. 반환 길이 = `text`의 줄 수.
 
+> 구현 단순화 대안: `@codemirror/language`의 `highlightCode(code, tree, highlighter, putText, putBreak)`는 스타일 유무와 무관하게 모든 조각에 `putText(text, classes)`를, 줄바꿈마다 `putBreak()`를 호출해 빈틈 채우기(3)와 줄 분할(4)을 대신 처리한다. 위 수동 방식과 동등하므로 구현자가 택1.
+
 ### 3.4 캐시
-모듈 레벨 `Map<string, Segment[][]>`를 텍스트 문자열로 키. `getHighlightedLines(text, languageId)` = 캐시 조회 후 없으면 `highlightToLines` 계산·저장. `clearHighlightCache()` export(변경 재로드 시 메모리 정리용). 이로써 전체-파일 파싱은 **파일 텍스트당 1회**.
+모듈 레벨 `Map<string, Segment[][]>`. 키는 **`languageId` + 텍스트**(예: `` `${languageId}\n${text}` ``) — 동일 텍스트가 다른 언어로 들어올 드문 충돌 방지. `getHighlightedLines(text, languageId)` = 캐시 조회 후 없으면 `highlightToLines` 계산·저장. `clearHighlightCache()` export(변경 재로드 시 메모리 정리용). 이로써 전체-파일 파싱은 **(언어,텍스트)당 1회**. 주의: 5MB 근처 대용량 파일은 보이는 첫 줄 렌더 시 1회 전체 파싱으로 그 프레임이 잠깐 끊길 수 있음(캐시 후 해소) — 허용.
 
 ## 4. DiffView 통합
 
@@ -100,7 +102,7 @@ export function highlightToLines(text: string, languageId: string): Segment[][];
 
 ## 6. 테스트
 - **Rust**: `git show HEAD:` old_text 통합 — 수정 파일은 old_text=HEAD 내용·new_text=작업 내용; 추가 파일 old_text None; 삭제 파일 new_text None·old_text=HEAD. `classify_bytes` 단위(텍스트/널바이트/초대용량).
-- **프론트 단위(`diffHighlight.test.ts`)**: `highlightToLines("const x = 1\nconst y = 2", "typescript")` → 2줄, 첫 줄에 `const` 토큰이 className 있는 세그먼트로 분리됨(키워드 강조 확인); 미지원 언어/빈 텍스트 → 플레인 세그먼트; 줄 수 == 개행+1.
+- **프론트 단위(`diffHighlight.test.ts`)**: `highlightToLines("const x = 1\nconst y = 2", "typescript")` → 2줄, 첫 줄에 `const` 토큰이 className 있는 세그먼트로 분리됨(키워드 강조 확인); 미지원 언어("plaintext")/빈 텍스트 → 플레인 세그먼트; 줄 수 == 개행+1; **CRLF 텍스트**(`"a\r\nb"`)에서 각 줄 세그먼트 합이 원본 줄(끝 `\r` 포함)과 일치해 안전 가드가 헛걸리지 않음.
 - **DiffView**: 강조된 토큰 span이 렌더되는지(예: 키워드 클래스 있는 span 존재), 바이너리/미지원은 플레인. 기존 DiffView/네비게이터 테스트 유지.
 
 ## 7. 변경 범위
