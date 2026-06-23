@@ -1,5 +1,5 @@
 use crate::error::{AppError, ErrorCode};
-use crate::fs_ops::{detect_file, FileContent};
+use crate::fs_ops::{classify_bytes, detect_file, FileContent};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
@@ -27,6 +27,8 @@ pub struct FileDiff {
     pub deletions: u32,
     pub binary: bool,
     pub too_large: bool,
+    pub new_text: Option<String>,
+    pub old_text: Option<String>,
     pub hunks: Vec<Hunk>,
 }
 
@@ -94,6 +96,8 @@ pub fn parse_diff(diff: &str) -> Vec<FileDiff> {
                 deletions: 0,
                 binary: false,
                 too_large: false,
+                new_text: None,
+                old_text: None,
                 hunks: Vec::new(),
             });
             continue;
@@ -255,6 +259,8 @@ fn untracked_file_diff(root: &Path, rel: &str) -> FileDiff {
         deletions: 0,
         binary: false,
         too_large: false,
+        new_text: None,
+        old_text: None,
         hunks: Vec::new(),
     };
     match detect_file(&abs) {
@@ -314,6 +320,25 @@ pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
         let raw = String::from_utf8_lossy(&out.stdout);
         for rel in raw.split('\0').filter(|s| !s.is_empty()) {
             files.push(untracked_file_diff(root_path, rel));
+        }
+    }
+
+    // Attach full file contents for syntax highlighting (text files only).
+    for f in &mut files {
+        if f.status != "deleted" {
+            if let Ok(FileContent::Text(t)) = detect_file(&root_path.join(&f.path)) {
+                f.new_text = Some(t);
+            }
+        }
+        if f.status != "added" && f.status != "untracked" {
+            let r = f.old_path.clone().unwrap_or_else(|| f.path.clone());
+            if let Ok(out) = git_output(root, &["show", &format!("HEAD:{r}")]) {
+                if out.status.success() {
+                    if let FileContent::Text(t) = classify_bytes(out.stdout) {
+                        f.old_text = Some(t);
+                    }
+                }
+            }
         }
     }
 
@@ -377,6 +402,36 @@ mod tests {
         assert_eq!(untracked.status, "untracked");
         assert_eq!(untracked.additions, 2);
         assert!(!untracked.hunks.is_empty());
+    }
+
+    #[test]
+    fn compute_changes_includes_file_contents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(dir.join("gone.txt"), "bye\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("a.txt"), "one\nTWO\n").unwrap();
+        std::fs::remove_file(dir.join("gone.txt")).unwrap();
+        std::fs::write(dir.join("u.txt"), "new\n").unwrap();
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let a = changes.files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(a.new_text.as_deref(), Some("one\nTWO\n"));
+        assert_eq!(a.old_text.as_deref(), Some("one\ntwo\n"));
+        let gone = changes.files.iter().find(|f| f.path == "gone.txt").unwrap();
+        assert_eq!(gone.status, "deleted");
+        assert_eq!(gone.new_text, None);
+        assert_eq!(gone.old_text.as_deref(), Some("bye\n"));
+        let u = changes.files.iter().find(|f| f.path == "u.txt").unwrap();
+        assert_eq!(u.new_text.as_deref(), Some("new\n"));
+        assert_eq!(u.old_text, None);
     }
 
     #[test]

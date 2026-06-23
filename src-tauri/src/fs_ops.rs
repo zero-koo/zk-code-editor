@@ -51,20 +51,28 @@ pub enum FileContent {
     TooLarge,
 }
 
+/// Classifies raw bytes as Text/Binary/TooLarge (used for files read off-disk
+/// and for `git show` output).
+pub fn classify_bytes(bytes: Vec<u8>) -> FileContent {
+    if bytes.len() as u64 > MAX_TEXT_BYTES {
+        return FileContent::TooLarge;
+    }
+    if bytes.contains(&0) {
+        return FileContent::Binary;
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => FileContent::Text(text),
+        Err(_) => FileContent::Binary,
+    }
+}
+
 /// Classifies a file at an absolute path as Text/Binary/TooLarge.
 pub fn detect_file(file: &Path) -> Result<FileContent, AppError> {
     let meta = std::fs::metadata(file)?;
     if meta.len() > MAX_TEXT_BYTES {
-        return Ok(FileContent::TooLarge);
+        return Ok(FileContent::TooLarge); // avoid reading an oversized file into memory
     }
-    let bytes = std::fs::read(file)?;
-    if bytes.contains(&0) {
-        return Ok(FileContent::Binary);
-    }
-    match String::from_utf8(bytes) {
-        Ok(text) => Ok(FileContent::Text(text)),
-        Err(_) => Ok(FileContent::Binary),
-    }
+    Ok(classify_bytes(std::fs::read(file)?))
 }
 
 pub fn read_file_impl(root: &Path, path: &str) -> Result<FileContent, AppError> {
@@ -200,6 +208,22 @@ mod tests {
         fs::write(tmp.path().join("a.txt"), "hello").unwrap();
         let c = read_file_impl(tmp.path(), tmp.path().join("a.txt").to_str().unwrap()).unwrap();
         assert_eq!(c, FileContent::Text("hello".into()));
+    }
+
+    #[test]
+    fn classify_bytes_text() {
+        assert_eq!(classify_bytes(b"hello".to_vec()), FileContent::Text("hello".into()));
+    }
+
+    #[test]
+    fn classify_bytes_binary_on_null() {
+        assert_eq!(classify_bytes(vec![104, 0, 105]), FileContent::Binary);
+    }
+
+    #[test]
+    fn classify_bytes_too_large() {
+        let big = vec![b'a'; (MAX_TEXT_BYTES + 1) as usize];
+        assert_eq!(classify_bytes(big), FileContent::TooLarge);
     }
 
     #[test]
