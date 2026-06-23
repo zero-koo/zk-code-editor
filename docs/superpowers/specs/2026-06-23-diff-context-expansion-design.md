@@ -63,8 +63,8 @@ export interface RevealedGap {
 export function hunkBounds(h: Hunk): HunkBounds; // 첫/마지막 non-null new_no·old_no 스캔
 export function fileGaps(hunks: Hunk[], totalNewLines: number): GapSpec[]; // §2.2, 길이>0만
 export function revealGap(
-  gap: GapSpec, state: { top: number; bottom: number }, newLines: string[], step: number
-): RevealedGap;
+  gap: GapSpec, state: { top: number; bottom: number }, newLines: string[]
+): RevealedGap; // step(20)은 DiffView의 expand 핸들러에서 state에 누적 → revealGap은 clamp만
 ```
 `revealGap` 로직:
 - `len = endNew − startNew + 1`; `top = min(state.top, len)`; `bottom = min(state.bottom, len − top)`(수렴 중복 방지).
