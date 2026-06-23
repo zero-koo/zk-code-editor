@@ -17,6 +17,7 @@ import { languageIdForFile } from "./lib/language";
 import { basename, relativePath } from "./lib/paths";
 import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
 import { useCursorStore } from "./store/cursorStore";
+import { useGitStore } from "./store/gitStore";
 
 function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
@@ -122,6 +123,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root]);
 
+  // Load git changes when a workspace opens so the activity-bar badge shows the
+  // current changed-file count from launch (refreshed on save and git-view entry).
+  useEffect(() => {
+    if (root) useGitStore.getState().load(root);
+  }, [root]);
+
   useEffect(() => {
     if (!hydrated) return; // don't persist until restore has run (avoids clobbering with [])
     if (!root) return;
@@ -200,6 +207,7 @@ export default function App() {
       await writeFile(path, doc);
       setDocs((d) => ({ ...d, [path]: doc }));
       setDirty(path, false);
+      if (root) useGitStore.getState().load(root); // refresh the changed-file badge
     } catch (e) {
       setNotice(`Failed to save ${basename(path)}: ${errorMessage(e)}`);
     }

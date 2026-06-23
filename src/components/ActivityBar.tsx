@@ -1,5 +1,6 @@
 import { FolderOpenIcon, SearchIcon, KeyboardIcon, GitBranchIcon } from "./icons";
 import { IconButton } from "./IconButton";
+import { useGitStore } from "../store/gitStore";
 
 type View = "explorer" | "search" | "git";
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShortcuts }: Props) {
+  const gitCount = useGitStore((s) => s.changes?.files.length ?? 0);
   const isActive = (v: View) =>
     v === "git" ? activeView === "git" : sidebarVisible && activeView === v;
   return (
@@ -53,6 +55,11 @@ export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShor
           <span className="absolute left-[-10px] top-[9px] w-[2.5px] h-5 rounded bg-accent" />
         )}
         <GitBranchIcon size={19} strokeWidth={1.8} />
+        {gitCount > 0 && (
+          <span className="absolute -bottom-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-accent text-white text-[10px] leading-none font-medium flex items-center justify-center">
+            {gitCount > 99 ? "99+" : gitCount}
+          </span>
+        )}
       </button>
       <IconButton
         label="Keyboard Shortcuts"

@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ActivityBar } from "./ActivityBar";
+import { useGitStore } from "../store/gitStore";
+import type { FileDiff } from "../api/types";
 
 const baseProps = {
   activeView: "explorer" as const,
@@ -10,7 +12,21 @@ const baseProps = {
   onOpenShortcuts: () => {},
 };
 
+const mkFile = (path: string): FileDiff => ({
+  path,
+  old_path: null,
+  status: "modified",
+  additions: 0,
+  deletions: 0,
+  binary: false,
+  too_large: false,
+  new_text: null,
+  old_text: null,
+  hunks: [],
+});
+
 describe("ActivityBar", () => {
+  beforeEach(() => useGitStore.setState({ changes: null, loading: false, error: null }));
   it("renders Explorer, Search, and Keyboard Shortcuts buttons", () => {
     render(<ActivityBar {...baseProps} />);
     expect(screen.getByRole("button", { name: /explorer/i })).toBeInTheDocument();
@@ -36,5 +52,21 @@ describe("ActivityBar", () => {
     render(<ActivityBar {...baseProps} onOpenShortcuts={onOpenShortcuts} />);
     await userEvent.click(screen.getByRole("button", { name: /keyboard shortcuts/i }));
     expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a badge with the changed-file count on the git button", () => {
+    useGitStore.setState({
+      changes: { is_repo: true, branch: "main", files: [mkFile("a"), mkFile("b"), mkFile("c")] },
+    });
+    render(<ActivityBar {...baseProps} />);
+    const git = screen.getByRole("button", { name: /source control/i });
+    expect(within(git).getByText("3")).toBeInTheDocument();
+  });
+
+  it("shows no badge when there are no changes", () => {
+    useGitStore.setState({ changes: { is_repo: true, branch: "main", files: [] } });
+    render(<ActivityBar {...baseProps} />);
+    const git = screen.getByRole("button", { name: /source control/i });
+    expect(within(git).queryByText(/^\d+$/)).not.toBeInTheDocument();
   });
 });
