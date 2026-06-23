@@ -38,6 +38,39 @@ if (typeof HTMLElement !== "undefined") {
   }
 }
 
+// jsdom lacks Element.prototype.scrollTo; @tanstack/react-virtual's scrollToIndex
+// calls scrollElement.scrollTo({ top }), a silent no-op when missing. Polyfill it
+// to assign scrollTop so click-to-scroll is observable in tests.
+if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function (
+    this: Element,
+    options?: ScrollToOptions | number,
+    y?: number
+  ) {
+    if (typeof options === "object" && options?.top != null) this.scrollTop = options.top;
+    else if (typeof y === "number") this.scrollTop = y;
+  } as typeof Element.prototype.scrollTo;
+}
+
+// scrollToIndex clamps its target to getMaxScrollOffset() = scrollHeight − clientHeight,
+// both 0 in jsdom (no layout) → every scroll would clamp to 0. Stub them on `.zk-scroll`
+// (large scrollHeight, 800 clientHeight) so the clamp permits a real positive offset.
+if (typeof HTMLElement !== "undefined") {
+  for (const [prop, size] of [
+    ["scrollHeight", 100000],
+    ["clientHeight", 800],
+  ] as const) {
+    const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, prop);
+    Object.defineProperty(HTMLElement.prototype, prop, {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.classList?.contains("zk-scroll")) return size;
+        return original?.get?.call(this) ?? 0;
+      },
+    });
+  }
+}
+
 // Node 26 ships an experimental global `localStorage` that is unusable without
 // --localstorage-file and shadows jsdom's. Provide a deterministic in-memory
 // implementation for tests (the real webview has a working localStorage).

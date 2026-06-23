@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FileDiff } from "../api/types";
 import { useGitStore } from "../store/gitStore";
+import { activeFileForOffset, type FileOffset } from "../lib/diffNav";
 
 interface Props {
   root: string | null;
@@ -45,22 +46,32 @@ export function DiffView({ root, active }: Props) {
   }
 
   const rows: Row[] = [];
+  const pathToRowIndex = new Map<string, number>();
+  const fileOffsets: FileOffset[] = [];
+  let top = 0;
   if (changes) {
     for (const file of changes.files) {
+      pathToRowIndex.set(file.path, rows.length);
+      fileOffsets.push({ path: file.path, top });
       rows.push({ kind: "file", file });
+      top += ROW_H.file;
       if (collapsed.has(file.path)) continue;
       if (file.binary) {
         rows.push({ kind: "info", text: "Binary file not shown" });
+        top += ROW_H.info;
         continue;
       }
       if (file.too_large) {
         rows.push({ kind: "info", text: "File too large to display" });
+        top += ROW_H.info;
         continue;
       }
       for (const h of file.hunks) {
         rows.push({ kind: "hunk", header: h.header });
+        top += ROW_H.hunk;
         for (const l of h.lines) {
           rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text });
+          top += ROW_H.line;
         }
       }
     }
@@ -72,6 +83,12 @@ export function DiffView({ root, active }: Props) {
     estimateSize: (i) => ROW_H[rows[i].kind],
     overscan: 16,
   });
+
+  const activePath = activeFileForOffset(fileOffsets, virtualizer.scrollOffset ?? 0);
+  function jumpTo(path: string) {
+    const idx = pathToRowIndex.get(path);
+    if (idx != null) virtualizer.scrollToIndex(idx, { align: "start" });
+  }
 
   const headerBar = (
     <div className="h-10 shrink-0 flex items-center gap-3 px-3.5 border-b border-bd-2 text-[12.5px] text-tx-2">
@@ -96,25 +113,30 @@ export function DiffView({ root, active }: Props) {
     body = <Centered>Not a Git repository</Centered>;
   } else if (changes && changes.files.length === 0) {
     body = <Centered>No changes</Centered>;
-  } else {
+  } else if (changes) {
     body = (
-      <div ref={scrollRef} className="zk-scroll flex-1 overflow-auto">
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
-          {virtualizer.getVirtualItems().map((vItem) => {
-            const row = rows[vItem.index];
-            return (
-              <div
-                key={vItem.key}
-                data-index={vItem.index}
-                style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vItem.size, transform: `translateY(${vItem.start}px)` }}
-              >
-                {renderRow(row, toggle)}
-              </div>
-            );
-          })}
+      <div className="flex flex-1 min-h-0">
+        <DiffFileList files={changes.files} activePath={activePath} onSelect={jumpTo} />
+        <div ref={scrollRef} data-testid="diff-scroll" className="zk-scroll flex-1 overflow-auto">
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
+            {virtualizer.getVirtualItems().map((vItem) => {
+              const row = rows[vItem.index];
+              return (
+                <div
+                  key={vItem.key}
+                  data-index={vItem.index}
+                  style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vItem.size, transform: `translateY(${vItem.start}px)` }}
+                >
+                  {renderRow(row, toggle)}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
+  } else {
+    body = <Centered>Loading changes…</Centered>;
   }
 
   return (
@@ -128,6 +150,35 @@ export function DiffView({ root, active }: Props) {
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex-1 flex items-center justify-center text-[13px] text-tx-3">{children}</div>
+  );
+}
+
+function DiffFileList({
+  files,
+  activePath,
+  onSelect,
+}: {
+  files: FileDiff[];
+  activePath: string | null;
+  onSelect: (path: string) => void;
+}) {
+  return (
+    <div data-testid="diff-file-list" className="zk-scroll shrink-0 w-56 overflow-auto border-r border-bd-2 py-1">
+      {files.map((f) => (
+        <div
+          key={f.path}
+          onClick={() => onSelect(f.path)}
+          className={`flex items-center gap-2 h-7 px-2.5 cursor-pointer text-[12px] ${
+            f.path === activePath ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/5"
+          }`}
+        >
+          <span className="w-3.5 text-center text-[10.5px] text-tx-3 shrink-0">{STATUS_BADGE[f.status]}</span>
+          <span className="flex-1 truncate">{f.path}</span>
+          {f.additions > 0 && <span className="text-[10.5px] text-emerald-400 shrink-0">+{f.additions}</span>}
+          {f.deletions > 0 && <span className="text-[10.5px] text-red-400 shrink-0">−{f.deletions}</span>}
+        </div>
+      ))}
+    </div>
   );
 }
 
