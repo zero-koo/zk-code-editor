@@ -39,6 +39,13 @@ pub struct GitChanges {
     pub files: Vec<FileDiff>,
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Worktree {
+    pub path: String,
+    pub branch: Option<String>,
+    pub is_current: bool,
+}
+
 fn strip_ab(s: &str) -> Option<String> {
     if s == "/dev/null" {
         return None;
@@ -293,6 +300,40 @@ fn untracked_file_diff(root: &Path, rel: &str) -> FileDiff {
         Err(_) => {}
     }
     fd
+}
+
+/// Parses `git worktree list --porcelain` output. Blocks are blank-line
+/// separated and each starts with `worktree <path>`. Only known prefixes are
+/// read; any other line (`HEAD`, `bare`, `locked`, `prunable`, …) is ignored.
+/// `branch refs/heads/<name>` → Some(name); `detached` → None.
+/// `is_current` is true when the block path equals `current` (a non-empty
+/// `git rev-parse --show-toplevel`); both sides are git-reported, so they agree
+/// even when the workspace was opened via a symlinked path.
+pub fn parse_worktrees(stdout: &str, current: &str) -> Vec<Worktree> {
+    let mut out = Vec::new();
+    let mut path: Option<String> = None;
+    let mut branch: Option<String> = None;
+
+    for line in stdout.split('\n') {
+        let line = line.trim_end_matches('\r');
+        if let Some(p) = line.strip_prefix("worktree ") {
+            if let Some(prev) = path.take() {
+                let is_current = !current.is_empty() && prev == current;
+                out.push(Worktree { path: prev, branch: branch.take(), is_current });
+            }
+            branch = None;
+            path = Some(p.to_string());
+        } else if let Some(b) = line.strip_prefix("branch ") {
+            branch = Some(b.strip_prefix("refs/heads/").unwrap_or(b).to_string());
+        } else if line == "detached" {
+            branch = None;
+        }
+    }
+    if let Some(prev) = path.take() {
+        let is_current = !current.is_empty() && prev == current;
+        out.push(Worktree { path: prev, branch, is_current });
+    }
+    out
 }
 
 pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
@@ -568,5 +609,32 @@ Binary files a/img.png and b/img.png differ\n";
         assert_eq!(files[0].deletions, 1);
         assert_eq!(files[0].additions, 1);
         assert_eq!(files[0].hunks[0].lines.len(), 2);
+    }
+
+    #[test]
+    fn parses_multiple_worktrees() {
+        let out = "worktree /repo\nHEAD abc\nbranch refs/heads/main\n\n\
+worktree /repo/wt\nHEAD def\nbranch refs/heads/feature\n\n";
+        let wts = parse_worktrees(out, "/repo");
+        assert_eq!(wts.len(), 2);
+        assert_eq!(wts[0].path, "/repo");
+        assert_eq!(wts[0].branch.as_deref(), Some("main"));
+        assert!(wts[0].is_current);
+        assert_eq!(wts[1].path, "/repo/wt");
+        assert_eq!(wts[1].branch.as_deref(), Some("feature"));
+        assert!(!wts[1].is_current);
+    }
+
+    #[test]
+    fn parses_detached_and_ignores_unknown_lines() {
+        let out = "worktree /repo\nHEAD abc\ndetached\nlocked\nprunable gitdir gone\n\n\
+worktree /repo/bare\nbare\n";
+        let wts = parse_worktrees(out, "");
+        assert_eq!(wts.len(), 2);
+        assert_eq!(wts[0].path, "/repo");
+        assert_eq!(wts[0].branch, None); // detached
+        assert!(!wts[0].is_current); // current is empty → nothing matches
+        assert_eq!(wts[1].path, "/repo/bare");
+        assert_eq!(wts[1].branch, None); // bare worktree, no branch line
     }
 }
