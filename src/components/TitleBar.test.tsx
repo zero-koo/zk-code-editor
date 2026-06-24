@@ -13,13 +13,13 @@ describe("TitleBar", () => {
   });
 
   it("shows the project name and branch", () => {
-    render(<TitleBar root="/proj" branch="main" onSwitchWorktree={() => {}} />);
+    render(<TitleBar root="/proj" name="proj" branch="main" onSwitchWorktree={() => {}} />);
     expect(screen.getByText("proj")).toBeInTheDocument();
     expect(screen.getByText("(main)")).toBeInTheDocument();
   });
 
   it("falls back to the app name when no folder is open", () => {
-    render(<TitleBar root={null} branch={null} onSwitchWorktree={() => {}} />);
+    render(<TitleBar root={null} name={null} branch={null} onSwitchWorktree={() => {}} />);
     expect(screen.getByText("zk-code-editor")).toBeInTheDocument();
   });
 
@@ -29,7 +29,7 @@ describe("TitleBar", () => {
       { path: "/proj-wt", branch: "feature", is_current: false },
     ]);
     const onSwitch = vi.fn();
-    render(<TitleBar root="/proj" branch="main" onSwitchWorktree={onSwitch} />);
+    render(<TitleBar root="/proj" name="proj" branch="main" onSwitchWorktree={onSwitch} />);
     await userEvent.click(screen.getByRole("button", { name: /switch worktree/i }));
     await userEvent.click(await screen.findByText("feature"));
     expect(onSwitch).toHaveBeenCalledWith("/proj-wt");
@@ -41,7 +41,7 @@ describe("TitleBar", () => {
       { path: "/proj-wt", branch: "feature", is_current: false },
     ]);
     const onSwitch = vi.fn();
-    render(<TitleBar root="/proj" branch="main" onSwitchWorktree={onSwitch} />);
+    render(<TitleBar root="/proj" name="proj" branch="main" onSwitchWorktree={onSwitch} />);
     await userEvent.click(screen.getByRole("button", { name: /switch worktree/i }));
     await userEvent.click(await screen.findByText("main"));
     expect(onSwitch).not.toHaveBeenCalled();

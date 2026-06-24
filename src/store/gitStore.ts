@@ -9,6 +9,7 @@ function errorMessage(e: unknown): string {
 
 interface GitState {
   changes: GitChanges | null;
+  loadedRoot: string | null;
   loading: boolean;
   error: string | null;
   load: (root: string) => Promise<void>;
@@ -18,6 +19,7 @@ let seq = 0;
 
 export const useGitStore = create<GitState>((set) => ({
   changes: null,
+  loadedRoot: null,
   loading: false,
   error: null,
   load: async (root) => {
@@ -25,7 +27,7 @@ export const useGitStore = create<GitState>((set) => ({
     set({ loading: true, error: null });
     try {
       const changes = await gitChanges(root);
-      if (s === seq) set({ changes, loading: false });
+      if (s === seq) set({ changes, loadedRoot: root, loading: false });
     } catch (e) {
       if (s === seq) set({ error: errorMessage(e), loading: false });
     }

@@ -53,7 +53,15 @@ export default function App() {
   const setRoot = useWorkspaceStore((s) => s.setRoot);
 
   const gitBranch = useGitStore((s) => s.changes?.branch ?? null);
+  const gitLoadedRoot = useGitStore((s) => s.loadedRoot);
   const switchingRef = useRef(false);
+
+  // Source the title name from the git store's loaded root so it changes in the
+  // same commit as the branch label — a worktree switch updates the title once,
+  // not twice (name now, branch a beat later). Falls back to the live root before
+  // the first git load so the name still shows immediately on initial open.
+  const titleRoot = gitLoadedRoot ?? root;
+  const titleName = titleRoot ? basename(titleRoot) : null;
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
   const openPaths = useMemo(() => tabs.map((t) => t.path), [tabs]);
@@ -257,7 +265,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
-      <TitleBar root={root} branch={gitBranch} onSwitchWorktree={switchWorktree} />
+      <TitleBar root={root} name={titleName} branch={gitBranch} onSwitchWorktree={switchWorktree} />
       <div className="flex flex-1 min-h-0">
       <ActivityBar
         activeView={activeView}

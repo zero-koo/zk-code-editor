@@ -11,7 +11,7 @@ const empty: GitChanges = { is_repo: true, branch: "main", files: [] };
 describe("gitStore", () => {
   beforeEach(() => {
     gitChanges.mockReset();
-    useGitStore.setState({ changes: null, loading: false, error: null });
+    useGitStore.setState({ changes: null, loadedRoot: null, loading: false, error: null });
   });
 
   it("loads changes and clears loading", async () => {
@@ -21,6 +21,12 @@ describe("gitStore", () => {
     expect(useGitStore.getState().changes).toEqual(empty);
     expect(useGitStore.getState().loading).toBe(false);
     expect(useGitStore.getState().error).toBeNull();
+  });
+
+  it("records the loaded root alongside changes", async () => {
+    gitChanges.mockResolvedValue(empty);
+    await useGitStore.getState().load("/repo");
+    expect(useGitStore.getState().loadedRoot).toBe("/repo");
   });
 
   it("records an error message on failure", async () => {

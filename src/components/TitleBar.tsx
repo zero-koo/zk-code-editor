@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { CodeIcon } from "./icons";
-import { basename } from "../lib/paths";
 import { gitWorktrees } from "../api/git";
 import type { Worktree } from "../api/types";
 
 interface Props {
-  /** Workspace root path, or null when no folder is open. */
+  /** Workspace root path, or null when no folder is open. Used to fetch worktrees. */
   root: string | null;
-  /** Current branch label (from the git store), or null. */
+  /** Display project name (kept in sync with `branch` so the title updates once). */
+  name: string | null;
+  /** Current branch label, or null. */
   branch: string | null;
   /** Called with the chosen worktree path when the user switches. */
   onSwitchWorktree: (path: string) => void;
@@ -19,10 +20,9 @@ interface Props {
  * the repo's git worktrees. The trigger and dropdown opt out of the drag region
  * via `pointer-events-auto` so their clicks aren't swallowed as a window drag.
  */
-export function TitleBar({ root, branch, onSwitchWorktree }: Props) {
+export function TitleBar({ root, name, branch, onSwitchWorktree }: Props) {
   const [open, setOpen] = useState(false);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
-  const name = root ? basename(root) : null;
 
   // Close on Escape while open.
   useEffect(() => {
