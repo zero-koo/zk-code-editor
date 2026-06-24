@@ -46,4 +46,15 @@ describe("FileExplorer", () => {
     expect(setWorkspaceRoot).toHaveBeenCalledWith("/saved");
     expect(useWorkspaceStore.getState().root).toBe("/saved");
   });
+
+  it("re-lists the tree when the root changes (worktree switch)", async () => {
+    readDir.mockResolvedValueOnce([{ name: "a.ts", path: "/wt1/a.ts", is_dir: false }]);
+    useWorkspaceStore.setState({ root: "/wt1" });
+    render(<FileExplorer onOpenFile={() => {}} />);
+    expect(await screen.findByText("a.ts")).toBeInTheDocument();
+
+    readDir.mockResolvedValueOnce([{ name: "b.ts", path: "/wt2/b.ts", is_dir: false }]);
+    useWorkspaceStore.setState({ root: "/wt2" });
+    expect(await screen.findByText("b.ts")).toBeInTheDocument();
+  });
 });

@@ -29,31 +29,42 @@ export const FileExplorer = memo(function FileExplorer({ onOpenFile, onFsChange 
     setEntries(await readDir(selected));
   }
 
-  // Restore the workspace after a reload/restart: the dev server (Vite) reloads
-  // the webview when project files change, which wipes the in-memory store —
-  // re-open the last folder and re-list its tree so it doesn't vanish.
+  // Restore the workspace root after a reload/restart: the dev server (Vite)
+  // reloads the webview when project files change, wiping the in-memory store.
+  // Only restore when the store has no root yet; the list effect below does the
+  // actual `readDir` once `root` is set (here or via Open Folder / a switch).
   useEffect(() => {
-    let cancelled = false;
+    if (useWorkspaceStore.getState().root) return;
+    const target = loadWorkspaceRoot();
+    if (!target) return;
     (async () => {
-      const current = useWorkspaceStore.getState().root;
-      const target = current ?? loadWorkspaceRoot();
-      if (!target) return;
       try {
-        if (!current) {
-          await setWorkspaceRoot(target);
-          setRoot(target);
-        }
-        const list = await readDir(target);
-        if (!cancelled) setEntries(list);
+        await setWorkspaceRoot(target);
+        setRoot(target);
       } catch {
         saveWorkspaceRoot(null); // folder gone/invalid — forget it
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // List the tree whenever the root changes (mount, Open Folder, worktree
+  // switch). Guard against the initial null root.
+  useEffect(() => {
+    if (!root) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await readDir(root);
+        if (!cancelled) setEntries(list);
+      } catch {
+        // invalid root; the restore effect forgets it on a cold start
       }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [root]);
 
   // Stable identity so memoized FileTreeNode children don't re-render.
   const handleFsChange = useCallback(
