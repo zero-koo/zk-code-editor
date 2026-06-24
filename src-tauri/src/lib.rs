@@ -23,6 +23,7 @@ pub fn run() {
             fs_ops::delete,
             search::search_workspace,
             git::git_changes,
+            git::git_worktrees,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

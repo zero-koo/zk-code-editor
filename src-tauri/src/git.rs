@@ -397,6 +397,30 @@ pub async fn git_changes(root: String) -> Result<GitChanges, AppError> {
         .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))?
 }
 
+fn list_worktrees(root: &str) -> Result<Vec<Worktree>, AppError> {
+    if !is_inside_repo(root) {
+        return Ok(Vec::new());
+    }
+    let current = git_output(root, &["rev-parse", "--show-toplevel"])
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let out = git_output(root, &["worktree", "list", "--porcelain"])?;
+    if !out.status.success() {
+        return Ok(Vec::new());
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(parse_worktrees(&text, &current))
+}
+
+#[tauri::command]
+pub async fn git_worktrees(root: String) -> Result<Vec<Worktree>, AppError> {
+    tauri::async_runtime::spawn_blocking(move || list_worktrees(&root))
+        .await
+        .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +505,39 @@ mod tests {
         let changes = compute_changes(tmp.path().to_str().unwrap()).unwrap();
         assert!(!changes.is_repo);
         assert!(changes.files.is_empty());
+    }
+
+    #[test]
+    fn list_worktrees_reports_linked_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("a.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+
+        // linked worktree in a separate temp dir
+        let wt = tempfile::tempdir().unwrap();
+        let wt_path = wt.path().join("feature-wt");
+        git(dir, &["worktree", "add", "-q", "-b", "feature", wt_path.to_str().unwrap()]);
+
+        let wts = list_worktrees(dir.to_str().unwrap()).unwrap();
+        assert_eq!(wts.len(), 2);
+        let main = wts.iter().find(|w| w.branch.as_deref() == Some("main")).unwrap();
+        let feat = wts.iter().find(|w| w.branch.as_deref() == Some("feature")).unwrap();
+        assert!(main.is_current); // dir's --show-toplevel matches the main worktree path
+        assert!(!feat.is_current);
+    }
+
+    #[test]
+    fn list_worktrees_on_non_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wts = list_worktrees(tmp.path().to_str().unwrap()).unwrap();
+        assert!(wts.is_empty());
     }
 
     #[test]
