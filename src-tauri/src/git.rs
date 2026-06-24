@@ -36,7 +36,8 @@ pub struct FileDiff {
 pub struct GitChanges {
     pub is_repo: bool,
     pub branch: Option<String>,
-    pub files: Vec<FileDiff>,
+    pub staged: Vec<FileDiff>,
+    pub unstaged: Vec<FileDiff>,
 }
 
 #[derive(Debug, Serialize, PartialEq)]
@@ -336,44 +337,47 @@ pub fn parse_worktrees(stdout: &str, current: &str) -> Vec<Worktree> {
     out
 }
 
-pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
-    if !is_inside_repo(root) {
-        return Ok(GitChanges {
-            is_repo: false,
-            branch: None,
-            files: Vec::new(),
-        });
-    }
-    let branch = current_branch(root);
-    let mut files: Vec<FileDiff> = Vec::new();
+#[derive(Clone, Copy)]
+enum Stream {
+    Staged,
+    Unstaged,
+}
 
-    if has_head(root) {
-        let out = git_output(root, &["diff", "HEAD", "--no-color", "-M"])?;
-        if out.status.success() {
-            let text = String::from_utf8_lossy(&out.stdout);
-            files.extend(parse_diff(&text));
-        }
-    }
-
-    let root_path = Path::new(root);
-    let out = git_output(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
-    if out.status.success() {
-        let raw = String::from_utf8_lossy(&out.stdout);
-        for rel in raw.split('\0').filter(|s| !s.is_empty()) {
-            files.push(untracked_file_diff(root_path, rel));
-        }
-    }
-
-    // Attach full file contents for syntax highlighting (text files only).
-    for f in &mut files {
+/// Attaches `new_text`/`old_text` to each FileDiff per the staged/unstaged
+/// source matrix (spec §2.3). Text-file content only; failures leave the field
+/// as None (the frontend falls back to plain rendering).
+fn attach_contents(root: &str, root_path: &Path, files: &mut [FileDiff], stream: Stream) {
+    for f in files {
+        // new side
         if f.status != "deleted" {
-            if let Ok(FileContent::Text(t)) = detect_file(&root_path.join(&f.path)) {
-                f.new_text = Some(t);
+            match stream {
+                // staged new side = index version at the (rename-to) path
+                Stream::Staged => {
+                    if let Ok(out) = git_output(root, &["show", &format!(":{}", f.path)]) {
+                        if out.status.success() {
+                            if let FileContent::Text(t) = classify_bytes(out.stdout) {
+                                f.new_text = Some(t);
+                            }
+                        }
+                    }
+                }
+                // unstaged new side = working-tree file
+                Stream::Unstaged => {
+                    if let Ok(FileContent::Text(t)) = detect_file(&root_path.join(&f.path)) {
+                        f.new_text = Some(t);
+                    }
+                }
             }
         }
+        // old side (skip for added/untracked: nothing precedes them)
         if f.status != "added" && f.status != "untracked" {
+            // rename: HEAD/index hold the old path, so prefer old_path when set
             let r = f.old_path.clone().unwrap_or_else(|| f.path.clone());
-            if let Ok(out) = git_output(root, &["show", &format!("HEAD:{r}")]) {
+            let spec = match stream {
+                Stream::Staged => format!("HEAD:{r}"),
+                Stream::Unstaged => format!(":{r}"),
+            };
+            if let Ok(out) = git_output(root, &["show", &spec]) {
                 if out.status.success() {
                     if let FileContent::Text(t) = classify_bytes(out.stdout) {
                         f.old_text = Some(t);
@@ -382,11 +386,52 @@ pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
             }
         }
     }
+}
+
+pub fn compute_changes(root: &str) -> Result<GitChanges, AppError> {
+    if !is_inside_repo(root) {
+        return Ok(GitChanges {
+            is_repo: false,
+            branch: None,
+            staged: Vec::new(),
+            unstaged: Vec::new(),
+        });
+    }
+    let branch = current_branch(root);
+    let root_path = Path::new(root);
+
+    // staged: HEAD <-> index. Skipped without HEAD (matches prior behavior:
+    // a fresh repo shows no staged stream).
+    let mut staged: Vec<FileDiff> = Vec::new();
+    if has_head(root) {
+        let out = git_output(root, &["diff", "--cached", "--no-color", "-M"])?;
+        if out.status.success() {
+            staged.extend(parse_diff(&String::from_utf8_lossy(&out.stdout)));
+        }
+    }
+
+    // unstaged: index <-> working tree, plus untracked files appended.
+    let mut unstaged: Vec<FileDiff> = Vec::new();
+    let out = git_output(root, &["diff", "--no-color", "-M"])?;
+    if out.status.success() {
+        unstaged.extend(parse_diff(&String::from_utf8_lossy(&out.stdout)));
+    }
+    let out = git_output(root, &["ls-files", "--others", "--exclude-standard", "-z"])?;
+    if out.status.success() {
+        let raw = String::from_utf8_lossy(&out.stdout);
+        for rel in raw.split('\0').filter(|s| !s.is_empty()) {
+            unstaged.push(untracked_file_diff(root_path, rel));
+        }
+    }
+
+    attach_contents(root, root_path, &mut staged, Stream::Staged);
+    attach_contents(root, root_path, &mut unstaged, Stream::Unstaged);
 
     Ok(GitChanges {
         is_repo: true,
         branch,
-        files,
+        staged,
+        unstaged,
     })
 }
 
@@ -459,11 +504,11 @@ mod tests {
 
         let changes = compute_changes(dir.to_str().unwrap()).unwrap();
         assert!(changes.is_repo);
-        let modified = changes.files.iter().find(|f| f.path == "a.txt").unwrap();
+        let modified = changes.unstaged.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!(modified.status, "modified");
         assert_eq!(modified.additions, 1);
         assert_eq!(modified.deletions, 1);
-        let untracked = changes.files.iter().find(|f| f.path == "u.txt").unwrap();
+        let untracked = changes.unstaged.iter().find(|f| f.path == "u.txt").unwrap();
         assert_eq!(untracked.status, "untracked");
         assert_eq!(untracked.additions, 2);
         assert!(!untracked.hunks.is_empty());
@@ -487,14 +532,14 @@ mod tests {
         std::fs::write(dir.join("u.txt"), "new\n").unwrap();
 
         let changes = compute_changes(dir.to_str().unwrap()).unwrap();
-        let a = changes.files.iter().find(|f| f.path == "a.txt").unwrap();
+        let a = changes.unstaged.iter().find(|f| f.path == "a.txt").unwrap();
         assert_eq!(a.new_text.as_deref(), Some("one\nTWO\n"));
         assert_eq!(a.old_text.as_deref(), Some("one\ntwo\n"));
-        let gone = changes.files.iter().find(|f| f.path == "gone.txt").unwrap();
+        let gone = changes.unstaged.iter().find(|f| f.path == "gone.txt").unwrap();
         assert_eq!(gone.status, "deleted");
         assert_eq!(gone.new_text, None);
         assert_eq!(gone.old_text.as_deref(), Some("bye\n"));
-        let u = changes.files.iter().find(|f| f.path == "u.txt").unwrap();
+        let u = changes.unstaged.iter().find(|f| f.path == "u.txt").unwrap();
         assert_eq!(u.new_text.as_deref(), Some("new\n"));
         assert_eq!(u.old_text, None);
     }
@@ -504,7 +549,79 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let changes = compute_changes(tmp.path().to_str().unwrap()).unwrap();
         assert!(!changes.is_repo);
-        assert!(changes.files.is_empty());
+        assert!(changes.staged.is_empty());
+        assert!(changes.unstaged.is_empty());
+    }
+
+    #[test]
+    fn compute_changes_separates_staged_and_unstaged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        // stage one change, then make a further unstaged change to the same file
+        std::fs::write(dir.join("a.txt"), "ONE\ntwo\n").unwrap();
+        git(dir, &["add", "a.txt"]);
+        std::fs::write(dir.join("a.txt"), "ONE\nTWO\n").unwrap();
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let staged = changes.staged.iter().find(|f| f.path == "a.txt").unwrap();
+        let unstaged = changes.unstaged.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(staged.status, "modified");
+        assert_eq!(unstaged.status, "modified");
+        // staged: HEAD -> index
+        assert_eq!(staged.old_text.as_deref(), Some("one\ntwo\n"));
+        assert_eq!(staged.new_text.as_deref(), Some("ONE\ntwo\n"));
+        // unstaged: index -> working tree
+        assert_eq!(unstaged.old_text.as_deref(), Some("ONE\ntwo\n"));
+        assert_eq!(unstaged.new_text.as_deref(), Some("ONE\nTWO\n"));
+    }
+
+    #[test]
+    fn compute_changes_staged_new_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("base.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("new.txt"), "hi\n").unwrap();
+        git(dir, &["add", "new.txt"]);
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let staged = changes.staged.iter().find(|f| f.path == "new.txt").unwrap();
+        assert_eq!(staged.status, "added");
+        assert_eq!(staged.new_text.as_deref(), Some("hi\n")); // index version
+        assert_eq!(staged.old_text, None); // absent from HEAD
+        assert!(changes.unstaged.iter().all(|f| f.path != "new.txt"));
+    }
+
+    #[test]
+    fn compute_changes_headless_repo_has_no_staged() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("u.txt"), "new\n").unwrap();
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.is_repo);
+        assert!(changes.staged.is_empty());
+        let u = changes.unstaged.iter().find(|f| f.path == "u.txt").unwrap();
+        assert_eq!(u.status, "untracked");
     }
 
     #[test]
