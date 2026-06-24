@@ -14,7 +14,8 @@ import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { readFile, writeFile, setWorkspaceRoot } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
-import { basename, relativePath, joinPath } from "./lib/paths";
+import { basename, relativePath } from "./lib/paths";
+import { switchWorktreeTabs } from "./lib/worktreeSwitch";
 import { loadOpenTabs, saveOpenTabs, saveWorkspaceRoot } from "./lib/workspacePersistence";
 import { useCursorStore } from "./store/cursorStore";
 import { useGitStore } from "./store/gitStore";
@@ -107,26 +108,21 @@ export default function App() {
         return;
       switchingRef.current = true;
       try {
-        // Capture relative paths against the OLD root before re-pointing.
-        const openRel = store.tabs.map((t) => relativePath(oldRoot, t.path));
-        const activeRel = store.activeTabPath
-          ? relativePath(oldRoot, store.activeTabPath)
-          : null;
-
-        await setWorkspaceRoot(path);
-        setRoot(path); // triggers the [root] git-load + FileExplorer re-list
-        saveWorkspaceRoot(path);
-        closeTabsUnder(oldRoot); // clears every tab under the old root
-
-        for (const rel of openRel) {
-          await openFile(joinPath(path, rel)); // missing/binary/large are skipped
-        }
-        if (activeRel) {
-          const target = joinPath(path, activeRel);
-          if (useWorkspaceStore.getState().tabs.some((t) => t.path === target)) {
-            setActive(target);
+        await switchWorktreeTabs(
+          oldRoot,
+          path,
+          store.tabs.map((t) => t.path),
+          store.activeTabPath,
+          {
+            setWorkspaceRoot,
+            setRoot,
+            saveWorkspaceRoot,
+            closeTabsUnder,
+            openFile,
+            setActive,
+            isTabOpen: (p) => useWorkspaceStore.getState().tabs.some((t) => t.path === p),
           }
-        }
+        );
       } finally {
         switchingRef.current = false;
       }
