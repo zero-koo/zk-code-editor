@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { FileDiff } from "../api/types";
-import { useGitStore } from "../store/gitStore";
+import { useGitStore, errorMessage } from "../store/gitStore";
 import { activeFileForOffset, type FileOffset } from "../lib/diffNav";
 import { getHighlightedLines, clearHighlightCache } from "../lib/diffHighlight";
 import { languageIdForFile } from "../lib/language";
@@ -86,8 +86,7 @@ export function DiffView({ root, active }: Props) {
     try {
       await gitFileAction(root, path, action);
     } catch (e) {
-      const m = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
-      setActionError(m);
+      setActionError(errorMessage(e));
     } finally {
       await load(root);
       setBusy(false);
@@ -192,7 +191,7 @@ export function DiffView({ root, active }: Props) {
       {actionError && <span data-testid="diff-action-error" className="text-[11.5px] text-red-400 truncate">{actionError}</span>}
       <span className="flex-1" />
       <button
-        onClick={() => root && load(root)}
+        onClick={() => { setActionError(null); if (root) load(root); }}
         className="text-[11.5px] text-tx-2 border border-bd-1 rounded-[7px] px-2.5 py-1 hover:bg-bg-3 hover:text-tx-1"
       >
         Refresh

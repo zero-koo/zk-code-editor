@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { GitChanges } from "../api/types";
 import { gitChanges } from "../api/git";
 
-function errorMessage(e: unknown): string {
+export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "message" in e) return String((e as { message: unknown }).message);
   return String(e);
 }
