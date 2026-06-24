@@ -465,7 +465,13 @@ fn run_git(root: &str, args: &[&str]) -> Result<(), AppError> {
     }
 }
 
-/// True when `path` is tracked (present in the index). Untracked → false.
+/// True when `path` is tracked (present in the index); false when untracked.
+///
+/// A non-zero exit means `ls-files` ran and found the path absent from the
+/// index (untracked). The only `Err` from `git_output` is a spawn failure,
+/// which `file_action` has already ruled out via the `is_inside_repo` guard
+/// before reaching the discard branch — so `unwrap_or(false)` here cannot
+/// misclassify a tracked file as untracked in practice.
 fn is_tracked(root: &str, path: &str) -> bool {
     git_output(root, &["ls-files", "--error-unmatch", "--", path])
         .map(|o| o.status.success())
@@ -573,6 +579,23 @@ mod tests {
         let s = changes.staged.iter().find(|f| f.path == "u.txt").unwrap();
         assert_eq!(s.status, "added");
         assert!(changes.unstaged.iter().all(|f| f.path != "u.txt"));
+    }
+
+    #[test]
+    fn file_action_stages_a_worktree_deletion() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::remove_file(dir.join("a.txt")).unwrap(); // worktree deletion (unstaged)
+
+        file_action(dir.to_str().unwrap(), "a.txt", &FileAction::Stage).unwrap();
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let s = changes.staged.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(s.status, "deleted");
+        assert!(changes.unstaged.iter().all(|f| f.path != "a.txt"));
     }
 
     #[test]
