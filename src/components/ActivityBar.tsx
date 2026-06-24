@@ -12,7 +12,11 @@ interface Props {
 }
 
 export function ActivityBar({ activeView, sidebarVisible, onActivate, onOpenShortcuts }: Props) {
-  const gitCount = useGitStore((s) => s.changes?.files.length ?? 0);
+  const gitCount = useGitStore((s) => {
+    const c = s.changes;
+    if (!c) return 0;
+    return new Set([...c.staged, ...c.unstaged].map((f) => f.path)).size;
+  });
   const isActive = (v: View) =>
     v === "git" ? activeView === "git" : sidebarVisible && activeView === v;
   return (

@@ -6,6 +6,7 @@ import { activeFileForOffset, type FileOffset } from "../lib/diffNav";
 import { getHighlightedLines, clearHighlightCache } from "../lib/diffHighlight";
 import { languageIdForFile } from "../lib/language";
 import { fileGaps, revealGap } from "../lib/diffExpand";
+import { mergeFiles, type MergedFile } from "../lib/mergeFiles";
 
 interface Props {
   root: string | null;
@@ -13,12 +14,13 @@ interface Props {
 }
 
 type Row =
-  | { kind: "file"; file: FileDiff }
+  | { kind: "file"; path: string; oldPath: string | null; status: FileDiff["status"]; additions: number; deletions: number }
+  | { kind: "section"; label: "Staged" | "Unstaged" }
   | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string; langId: string; newText: string | null; oldText: string | null }
   | { kind: "info"; text: string }
   | { kind: "expander"; gapKey: string; canUp: boolean; canDown: boolean; remaining: number };
 
-const ROW_H: Record<Row["kind"], number> = { file: 34, line: 20, info: 28, expander: 22 };
+const ROW_H: Record<Row["kind"], number> = { file: 34, section: 24, line: 20, info: 28, expander: 22 };
 const EXPAND_STEP = 20;
 
 const STATUS_BADGE: Record<FileDiff["status"], string> = {
@@ -67,62 +69,81 @@ export function DiffView({ root, active }: Props) {
     });
   }
 
+  const merged = changes ? mergeFiles(changes.staged, changes.unstaged) : [];
   const rows: Row[] = [];
   const pathToRowIndex = new Map<string, number>();
   const fileOffsets: FileOffset[] = [];
   let top = 0;
-  if (changes) {
-    for (const file of changes.files) {
-      pathToRowIndex.set(file.path, rows.length);
-      fileOffsets.push({ path: file.path, top });
-      rows.push({ kind: "file", file });
-      top += ROW_H.file;
-      const langId = languageIdForFile(file.path);
-      if (collapsed.has(file.path)) continue;
-      if (file.binary) {
-        rows.push({ kind: "info", text: "Binary file not shown" });
-        top += ROW_H.info;
-        continue;
-      }
-      if (file.too_large) {
-        rows.push({ kind: "info", text: "File too large to display" });
-        top += ROW_H.info;
-        continue;
-      }
-      const newText = file.new_text;
-      const newLines = newText != null ? newText.split("\n") : null;
-      if (newLines && newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
-      const gaps = newLines ? fileGaps(file.hunks, newLines.length) : [];
-      const gapByIndex = new Map(gaps.map((g) => [g.beforeHunkIndex, g]));
 
-      const emitGap = (idx: number) => {
-        const g = gapByIndex.get(idx);
-        if (!g || !newLines) return;
-        const key = `${file.path}#${idx}`;
-        const r = revealGap(g, expanded.get(key) ?? { top: 0, bottom: 0 }, newLines);
-        for (const rl of r.topLines) {
-          rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: file.old_text });
-          top += ROW_H.line;
-        }
-        if (r.remaining > 0) {
-          rows.push({ kind: "expander", gapKey: key, canUp: r.canUp, canDown: r.canDown, remaining: r.remaining });
-          top += ROW_H.expander;
-        }
-        for (const rl of r.bottomLines) {
-          rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: file.old_text });
-          top += ROW_H.line;
-        }
-      };
+  // Emit one FileDiff's body (binary/too_large notice or hunks + gap expanders).
+  // `tag` ("s"|"u") namespaces the gapKey so a partially-staged file's two
+  // streams expand independently.
+  const emitBody = (fd: FileDiff, tag: "s" | "u", path: string) => {
+    const langId = languageIdForFile(path);
+    if (fd.binary) {
+      rows.push({ kind: "info", text: "Binary file not shown" });
+      top += ROW_H.info;
+      return;
+    }
+    if (fd.too_large) {
+      rows.push({ kind: "info", text: "File too large to display" });
+      top += ROW_H.info;
+      return;
+    }
+    const newText = fd.new_text;
+    const newLines = newText != null ? newText.split("\n") : null;
+    if (newLines && newLines.length > 0 && newLines[newLines.length - 1] === "") newLines.pop();
+    const gaps = newLines ? fileGaps(fd.hunks, newLines.length) : [];
+    const gapByIndex = new Map(gaps.map((g) => [g.beforeHunkIndex, g]));
 
-      for (let hi = 0; hi < file.hunks.length; hi++) {
-        emitGap(hi);
-        const h = file.hunks[hi];
-        for (const l of h.lines) {
-          rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text, langId, newText: file.new_text, oldText: file.old_text });
-          top += ROW_H.line;
-        }
+    const emitGap = (idx: number) => {
+      const g = gapByIndex.get(idx);
+      if (!g || !newLines) return;
+      const key = `${path}#${tag}#${idx}`;
+      const r = revealGap(g, expanded.get(key) ?? { top: 0, bottom: 0 }, newLines);
+      for (const rl of r.topLines) {
+        rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: fd.old_text });
+        top += ROW_H.line;
       }
-      emitGap(file.hunks.length);
+      if (r.remaining > 0) {
+        rows.push({ kind: "expander", gapKey: key, canUp: r.canUp, canDown: r.canDown, remaining: r.remaining });
+        top += ROW_H.expander;
+      }
+      for (const rl of r.bottomLines) {
+        rows.push({ kind: "line", lineKind: "context", oldNo: rl.oldNo, newNo: rl.newNo, text: rl.text, langId, newText, oldText: fd.old_text });
+        top += ROW_H.line;
+      }
+    };
+
+    for (let hi = 0; hi < fd.hunks.length; hi++) {
+      emitGap(hi);
+      const h = fd.hunks[hi];
+      for (const l of h.lines) {
+        rows.push({ kind: "line", lineKind: l.kind, oldNo: l.old_no, newNo: l.new_no, text: l.text, langId, newText: fd.new_text, oldText: fd.old_text });
+        top += ROW_H.line;
+      }
+    }
+    emitGap(fd.hunks.length);
+  };
+
+  for (const mf of merged) {
+    pathToRowIndex.set(mf.path, rows.length);
+    fileOffsets.push({ path: mf.path, top });
+    const additions = (mf.staged?.additions ?? 0) + (mf.unstaged?.additions ?? 0);
+    const deletions = (mf.staged?.deletions ?? 0) + (mf.unstaged?.deletions ?? 0);
+    const oldPath = mf.staged?.old_path ?? mf.unstaged?.old_path ?? null;
+    rows.push({ kind: "file", path: mf.path, oldPath, status: mf.status, additions, deletions });
+    top += ROW_H.file;
+    if (collapsed.has(mf.path)) continue;
+    if (mf.staged) {
+      rows.push({ kind: "section", label: "Staged" });
+      top += ROW_H.section;
+      emitBody(mf.staged, "s", mf.path);
+    }
+    if (mf.unstaged) {
+      rows.push({ kind: "section", label: "Unstaged" });
+      top += ROW_H.section;
+      emitBody(mf.unstaged, "u", mf.path);
     }
   }
 
@@ -142,7 +163,7 @@ export function DiffView({ root, active }: Props) {
   const headerBar = (
     <div className="h-10 shrink-0 flex items-center gap-3 px-3.5 border-b border-bd-2 text-[12.5px] text-tx-2">
       <span className="font-medium text-tx-bright">{changes?.branch ?? "—"}</span>
-      <span className="text-tx-3">{changes ? `${changes.files.length} changed` : ""}</span>
+      <span className="text-tx-3">{changes ? `${merged.length} changed` : ""}</span>
       <span className="flex-1" />
       <button
         onClick={() => root && load(root)}
@@ -160,12 +181,12 @@ export function DiffView({ root, active }: Props) {
     body = <Centered>{error}</Centered>;
   } else if (changes && !changes.is_repo) {
     body = <Centered>Not a Git repository</Centered>;
-  } else if (changes && changes.files.length === 0) {
+  } else if (changes && merged.length === 0) {
     body = <Centered>No changes</Centered>;
   } else if (changes) {
     body = (
       <div className="flex flex-1 min-h-0">
-        <DiffFileList files={changes.files} activePath={activePath} onSelect={jumpTo} />
+        <DiffFileList files={merged} activePath={activePath} onSelect={jumpTo} />
         <div ref={scrollRef} data-testid="diff-scroll" className="zk-scroll flex-1 overflow-auto">
           <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
             {virtualizer.getVirtualItems().map((vItem) => {
@@ -207,43 +228,55 @@ function DiffFileList({
   activePath,
   onSelect,
 }: {
-  files: FileDiff[];
+  files: MergedFile[];
   activePath: string | null;
   onSelect: (path: string) => void;
 }) {
   return (
     <div data-testid="diff-file-list" className="zk-scroll shrink-0 w-56 overflow-auto border-r border-bd-2 py-1">
-      {files.map((f) => (
-        <div
-          key={f.path}
-          onClick={() => onSelect(f.path)}
-          className={`flex items-center gap-2 h-7 px-2.5 cursor-pointer text-[12px] ${
-            f.path === activePath ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/5"
-          }`}
-        >
-          <span className="w-3.5 text-center text-[10.5px] text-tx-3 shrink-0">{STATUS_BADGE[f.status]}</span>
-          <span className="flex-1 truncate">{f.path}</span>
-          {f.additions > 0 && <span className="text-[10.5px] text-emerald-400 shrink-0">+{f.additions}</span>}
-          {f.deletions > 0 && <span className="text-[10.5px] text-red-400 shrink-0">−{f.deletions}</span>}
-        </div>
-      ))}
+      {files.map((f) => {
+        const additions = (f.staged?.additions ?? 0) + (f.unstaged?.additions ?? 0);
+        const deletions = (f.staged?.deletions ?? 0) + (f.unstaged?.deletions ?? 0);
+        return (
+          <div
+            key={f.path}
+            onClick={() => onSelect(f.path)}
+            className={`flex items-center gap-2 h-7 px-2.5 cursor-pointer text-[12px] ${
+              f.path === activePath ? "bg-white/10 text-tx-bright" : "text-tx-2 hover:bg-white/5"
+            }`}
+          >
+            <span className="w-3.5 text-center text-[10.5px] text-tx-3 shrink-0">{STATUS_BADGE[f.status]}</span>
+            <span className="flex-1 truncate">{f.path}</span>
+            {f.staged && <span title="Staged" className="text-[10px] font-medium text-emerald-400 shrink-0">S</span>}
+            {f.unstaged && <span title="Unstaged" className="text-[10px] font-medium text-amber-400 shrink-0">U</span>}
+            {additions > 0 && <span className="text-[10.5px] text-emerald-400 shrink-0">+{additions}</span>}
+            {deletions > 0 && <span className="text-[10.5px] text-red-400 shrink-0">−{deletions}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function renderRow(row: Row, toggle: (path: string) => void, expand: (gapKey: string, dir: "up" | "down") => void) {
   if (row.kind === "file") {
-    const f = row.file;
-    const label = f.old_path ? `${f.old_path} → ${f.path}` : f.path;
+    const label = row.oldPath ? `${row.oldPath} → ${row.path}` : row.path;
     return (
       <div
         className="flex items-center gap-2 h-[34px] px-3 bg-bg-1 border-b border-bd-2 cursor-pointer hover:bg-bg-3"
-        onClick={() => toggle(f.path)}
+        onClick={() => toggle(row.path)}
       >
-        <span className="w-4 text-center text-[11px] text-tx-2">{STATUS_BADGE[f.status]}</span>
+        <span className="w-4 text-center text-[11px] text-tx-2">{STATUS_BADGE[row.status]}</span>
         <span className="flex-1 truncate text-[12.5px] text-tx-1">{label}</span>
-        {f.additions > 0 && <span className="text-[11.5px] text-emerald-400">+{f.additions}</span>}
-        {f.deletions > 0 && <span className="text-[11.5px] text-red-400">−{f.deletions}</span>}
+        {row.additions > 0 && <span className="text-[11.5px] text-emerald-400">+{row.additions}</span>}
+        {row.deletions > 0 && <span className="text-[11.5px] text-red-400">−{row.deletions}</span>}
+      </div>
+    );
+  }
+  if (row.kind === "section") {
+    return (
+      <div className="h-6 flex items-center px-3 text-[11px] font-medium uppercase tracking-wide text-tx-3 bg-bg-2 border-b border-bd-2">
+        {row.label}
       </div>
     );
   }

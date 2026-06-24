@@ -6,7 +6,7 @@ vi.mock("../api/git", () => ({ gitChanges: (...a: unknown[]) => gitChanges(...a)
 
 import { useGitStore } from "./gitStore";
 
-const empty: GitChanges = { is_repo: true, branch: "main", files: [] };
+const empty: GitChanges = { is_repo: true, branch: "main", staged: [], unstaged: [] };
 
 describe("gitStore", () => {
   beforeEach(() => {

@@ -82,7 +82,8 @@ export interface FileDiff {
 export interface GitChanges {
   is_repo: boolean;
   branch: string | null;
-  files: FileDiff[];
+  staged: FileDiff[];
+  unstaged: FileDiff[];
 }
 
 export interface Worktree {

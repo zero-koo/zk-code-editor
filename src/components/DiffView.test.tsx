@@ -18,7 +18,8 @@ import { DiffView } from "./DiffView";
 const sample: GitChanges = {
   is_repo: true,
   branch: "main",
-  files: [
+  staged: [],
+  unstaged: [
     {
       path: "src/a.ts",
       old_path: null,
@@ -42,13 +43,14 @@ const sample: GitChanges = {
   ],
 };
 
-// Three files; clicking the 3rd (src/c.ts, at pixel offset 152) scrolls to a
-// positive offset thanks to the scrollHeight/clientHeight stubs in setup.ts.
+// Three files; clicking the 3rd (src/c.ts) scrolls to a positive offset thanks
+// to the scrollHeight/clientHeight stubs in setup.ts.
 const oneAdd = (text: string) => [{ kind: "add" as const, old_no: null, new_no: 1, text }];
 const multi: GitChanges = {
   is_repo: true,
   branch: "main",
-  files: [
+  staged: [],
+  unstaged: [
     { path: "src/a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "aaa\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("aaa") }] },
     { path: "src/b.ts", old_path: null, status: "added", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "bbb\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("bbb") }] },
     { path: "src/c.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "ccc\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: oneAdd("ccc") }] },
@@ -82,20 +84,21 @@ describe("DiffView", () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
       branch: "main",
-      files: [{ path: "img.png", old_path: null, status: "modified", additions: 0, deletions: 0, binary: true, too_large: false, new_text: null, old_text: null, hunks: [] }],
+      staged: [],
+      unstaged: [{ path: "img.png", old_path: null, status: "modified", additions: 0, deletions: 0, binary: true, too_large: false, new_text: null, old_text: null, hunks: [] }],
     });
     render(<DiffView root="/repo" active />);
     expect(await screen.findByText(/binary file/i)).toBeInTheDocument();
   });
 
   it("shows the not-a-repository state", async () => {
-    gitChanges.mockResolvedValue({ is_repo: false, branch: null, files: [] });
+    gitChanges.mockResolvedValue({ is_repo: false, branch: null, staged: [], unstaged: [] });
     render(<DiffView root="/repo" active />);
     expect(await screen.findByText(/not a git repository/i)).toBeInTheDocument();
   });
 
   it("shows the no-changes state", async () => {
-    gitChanges.mockResolvedValue({ is_repo: true, branch: "main", files: [] });
+    gitChanges.mockResolvedValue({ is_repo: true, branch: "main", staged: [], unstaged: [] });
     render(<DiffView root="/repo" active />);
     expect(await screen.findByText(/no changes/i)).toBeInTheDocument();
   });
@@ -113,7 +116,8 @@ describe("DiffView", () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
       branch: "main",
-      files: [
+      staged: [],
+      unstaged: [
         {
           path: "a.ts",
           old_path: null,
@@ -149,7 +153,8 @@ describe("DiffView", () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
       branch: "main",
-      files: [
+      staged: [],
+      unstaged: [
         {
           path: "a.txt",
           old_path: null,
@@ -186,7 +191,8 @@ describe("DiffView", () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
       branch: "main",
-      files: [
+      staged: [],
+      unstaged: [
         {
           path: "img.bin",
           old_path: null,
@@ -204,5 +210,56 @@ describe("DiffView", () => {
     render(<DiffView root="/repo" active />);
     await screen.findByText(/binary file/i);
     expect(screen.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Staged and Unstaged sections for a partially staged file", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "staged\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "staged" }] }] },
+      ],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "unstaged\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "unstaged" }] }] },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    expect(screen.getByText("Staged")).toBeInTheDocument();
+    expect(screen.getByText("Unstaged")).toBeInTheDocument();
+  });
+
+  it("shows only the Staged section for a staged-only file", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [
+        { path: "a.ts", old_path: null, status: "added", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "s\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "s" }] }] },
+      ],
+      unstaged: [],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    expect(screen.getByText("Staged")).toBeInTheDocument();
+    expect(screen.queryByText("Unstaged")).not.toBeInTheDocument();
+  });
+
+  // NOTE: fixtures here must avoid untracked / "U"-status files. STATUS_BADGE.untracked
+  // is "U", which would collide with the unstaged "U" badge and make getByText("U") ambiguous.
+  it("badges a partially staged file with both S and U in the navigator", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "s\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "s" }] }] },
+      ],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    const nav = await screen.findByTestId("diff-file-list");
+    expect(within(nav).getByText("S")).toBeInTheDocument();
+    expect(within(nav).getByText("U")).toBeInTheDocument();
   });
 });

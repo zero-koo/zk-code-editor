@@ -54,9 +54,14 @@ describe("ActivityBar", () => {
     expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a badge with the changed-file count on the git button", () => {
+  it("shows a badge with the merged changed-file count on the git button", () => {
     useGitStore.setState({
-      changes: { is_repo: true, branch: "main", files: [mkFile("a"), mkFile("b"), mkFile("c")] },
+      changes: {
+        is_repo: true,
+        branch: "main",
+        staged: [mkFile("a"), mkFile("b")],
+        unstaged: [mkFile("b"), mkFile("c")],
+      },
     });
     render(<ActivityBar {...baseProps} />);
     const git = screen.getByRole("button", { name: /source control/i });
@@ -64,7 +69,7 @@ describe("ActivityBar", () => {
   });
 
   it("shows no badge when there are no changes", () => {
-    useGitStore.setState({ changes: { is_repo: true, branch: "main", files: [] } });
+    useGitStore.setState({ changes: { is_repo: true, branch: "main", staged: [], unstaged: [] } });
     render(<ActivityBar {...baseProps} />);
     const git = screen.getByRole("button", { name: /source control/i });
     expect(within(git).queryByText(/^\d+$/)).not.toBeInTheDocument();
