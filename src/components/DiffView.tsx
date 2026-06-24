@@ -213,7 +213,7 @@ export function DiffView({ root, active }: Props) {
     body = (
       <div className="flex flex-1 min-h-0">
         <DiffFileList files={merged} activePath={activePath} onSelect={jumpTo} />
-        <div ref={scrollRef} data-testid="diff-scroll" className="zk-scroll flex-1 overflow-auto">
+        <div ref={scrollRef} data-testid="diff-scroll" className="zk-scroll flex-1 overflow-auto" style={{ scrollbarGutter: "stable" }}>
           <div style={{ height: virtualizer.getTotalSize(), position: "relative", width: "100%" }}>
             {virtualizer.getVirtualItems().map((vItem) => {
               const row = rows[vItem.index];
