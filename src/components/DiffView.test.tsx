@@ -244,8 +244,6 @@ describe("DiffView", () => {
     expect(screen.queryByText("Unstaged")).not.toBeInTheDocument();
   });
 
-  // NOTE: fixtures here must avoid untracked / "U"-status files. STATUS_BADGE.untracked
-  // is "U", which would collide with the unstaged "U" badge and make getByText("U") ambiguous.
   it("badges a partially staged file with both S and U in the navigator", async () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
@@ -259,7 +257,7 @@ describe("DiffView", () => {
     });
     render(<DiffView root="/repo" active />);
     const nav = await screen.findByTestId("diff-file-list");
-    expect(within(nav).getByText("S")).toBeInTheDocument();
-    expect(within(nav).getByText("U")).toBeInTheDocument();
+    expect(within(nav).getByTestId("badge-staged")).toBeInTheDocument();
+    expect(within(nav).getByTestId("badge-unstaged")).toBeInTheDocument();
   });
 });

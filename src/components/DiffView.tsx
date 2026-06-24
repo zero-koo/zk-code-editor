@@ -247,8 +247,8 @@ function DiffFileList({
           >
             <span className="w-3.5 text-center text-[10.5px] text-tx-3 shrink-0">{STATUS_BADGE[f.status]}</span>
             <span className="flex-1 truncate">{f.path}</span>
-            {f.staged && <span title="Staged" className="text-[10px] font-medium text-emerald-400 shrink-0">S</span>}
-            {f.unstaged && <span title="Unstaged" className="text-[10px] font-medium text-amber-400 shrink-0">U</span>}
+            {f.staged && <span data-testid="badge-staged" title="Staged" className="text-[10px] font-medium text-emerald-400 shrink-0">S</span>}
+            {f.unstaged && <span data-testid="badge-unstaged" title="Unstaged" className="text-[10px] font-medium text-amber-400 shrink-0">U</span>}
             {additions > 0 && <span className="text-[10.5px] text-emerald-400 shrink-0">+{additions}</span>}
             {deletions > 0 && <span className="text-[10.5px] text-red-400 shrink-0">−{deletions}</span>}
           </div>
