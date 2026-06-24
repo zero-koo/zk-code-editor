@@ -1,8 +1,9 @@
 use crate::error::{AppError, ErrorCode};
 use crate::fs_ops::{classify_bytes, detect_file, FileContent};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
+use crate::workspace::resolve_in_workspace;
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct DiffLine {
@@ -443,6 +444,71 @@ pub async fn git_changes(root: String) -> Result<GitChanges, AppError> {
         .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))?
 }
 
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileAction {
+    Stage,
+    Unstage,
+    Discard,
+}
+
+/// Runs a git mutation command, mapping a non-zero exit to an AppError that
+/// carries git's stderr.
+fn run_git(root: &str, args: &[&str]) -> Result<(), AppError> {
+    let out = git_output(root, args)?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let msg = if msg.is_empty() { format!("git {args:?} failed") } else { msg };
+        Err(AppError::new(ErrorCode::Io, msg))
+    }
+}
+
+/// True when `path` is tracked (present in the index). Untracked → false.
+fn is_tracked(root: &str, path: &str) -> bool {
+    git_output(root, &["ls-files", "--error-unmatch", "--", path])
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Applies a stage / unstage / discard action to a single file path
+/// (root-relative, as reported by `compute_changes`).
+pub fn file_action(root: &str, path: &str, action: &FileAction) -> Result<(), AppError> {
+    if !is_inside_repo(root) {
+        return Err(AppError::new(ErrorCode::Io, "not a git repository".to_string()));
+    }
+    match action {
+        FileAction::Stage => run_git(root, &["add", "--", path]),
+        FileAction::Unstage => {
+            if has_head(root) {
+                run_git(root, &["restore", "--staged", "--", path])
+            } else {
+                run_git(root, &["rm", "--cached", "--", path])
+            }
+        }
+        FileAction::Discard => {
+            if is_tracked(root, path) {
+                run_git(root, &["restore", "--", path])
+            } else {
+                let abs = Path::new(root).join(path);
+                let abs_str = abs
+                    .to_str()
+                    .ok_or_else(|| AppError::new(ErrorCode::Io, "invalid path".to_string()))?;
+                let safe = resolve_in_workspace(Path::new(root), abs_str)?;
+                std::fs::remove_file(&safe).map_err(AppError::from)
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn git_file_action(root: String, path: String, action: FileAction) -> Result<(), AppError> {
+    tauri::async_runtime::spawn_blocking(move || file_action(&root, &path, &action))
+        .await
+        .map_err(|e| AppError::new(ErrorCode::Io, e.to_string()))?
+}
+
 fn list_worktrees(root: &str) -> Result<Vec<Worktree>, AppError> {
     if !is_inside_repo(root) {
         return Ok(Vec::new());
@@ -482,6 +548,152 @@ mod tests {
             .unwrap()
             .success();
         assert!(ok, "git {:?} failed", args);
+    }
+
+    fn init_repo(dir: &std::path::Path) {
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+    }
+
+    #[test]
+    fn file_action_stages_untracked_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("base.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("u.txt"), "new\n").unwrap();
+
+        file_action(dir.to_str().unwrap(), "u.txt", &FileAction::Stage).unwrap();
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let s = changes.staged.iter().find(|f| f.path == "u.txt").unwrap();
+        assert_eq!(s.status, "added");
+        assert!(changes.unstaged.iter().all(|f| f.path != "u.txt"));
+    }
+
+    #[test]
+    fn file_action_unstages_with_head() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+        git(dir, &["add", "a.txt"]);
+
+        file_action(dir.to_str().unwrap(), "a.txt", &FileAction::Unstage).unwrap();
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.staged.iter().all(|f| f.path != "a.txt"));
+        assert!(changes.unstaged.iter().any(|f| f.path == "a.txt" && f.status == "modified"));
+    }
+
+    #[test]
+    fn file_action_unstage_without_head_uses_rm_cached() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("n.txt"), "hi\n").unwrap();
+        git(dir, &["add", "n.txt"]);
+
+        file_action(dir.to_str().unwrap(), "n.txt", &FileAction::Unstage).unwrap();
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.staged.is_empty());
+        assert!(changes.unstaged.iter().any(|f| f.path == "n.txt" && f.status == "untracked"));
+        assert!(dir.join("n.txt").exists());
+    }
+
+    #[test]
+    fn file_action_discards_tracked_modification() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+
+        file_action(dir.to_str().unwrap(), "a.txt", &FileAction::Discard).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "one\n");
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.unstaged.iter().all(|f| f.path != "a.txt"));
+    }
+
+    #[test]
+    fn file_action_discards_untracked_by_deleting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("base.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("u.txt"), "junk\n").unwrap();
+        assert!(dir.join("u.txt").exists());
+
+        file_action(dir.to_str().unwrap(), "u.txt", &FileAction::Discard).unwrap();
+        assert!(!dir.join("u.txt").exists());
+    }
+
+    #[test]
+    fn file_action_discard_preserves_staged_modification() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("a.txt"), "v1\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("a.txt"), "v2\n").unwrap();
+        git(dir, &["add", "a.txt"]);
+        std::fs::write(dir.join("a.txt"), "v3\n").unwrap();
+
+        file_action(dir.to_str().unwrap(), "a.txt", &FileAction::Discard).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "v2\n");
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.staged.iter().any(|f| f.path == "a.txt"));
+        assert!(changes.unstaged.iter().all(|f| f.path != "a.txt"));
+    }
+
+    #[test]
+    fn file_action_discard_on_partially_staged_add_keeps_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("base.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        std::fs::write(dir.join("n.txt"), "staged\n").unwrap();
+        git(dir, &["add", "n.txt"]);
+        std::fs::write(dir.join("n.txt"), "worktree\n").unwrap();
+
+        file_action(dir.to_str().unwrap(), "n.txt", &FileAction::Discard).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("n.txt")).unwrap(), "staged\n");
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        assert!(changes.staged.iter().any(|f| f.path == "n.txt" && f.status == "added"));
+        assert!(changes.unstaged.iter().all(|f| f.path != "n.txt"));
+    }
+
+    #[test]
+    fn file_action_discard_rejects_path_escape() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        init_repo(dir);
+        std::fs::write(dir.join("base.txt"), "x\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+
+        let err = file_action(dir.to_str().unwrap(), "../escape.txt", &FileAction::Discard).unwrap_err();
+        assert_eq!(err.code, ErrorCode::OutsideWorkspace);
+    }
+
+    #[test]
+    fn file_action_on_non_repo_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = file_action(tmp.path().to_str().unwrap(), "a.txt", &FileAction::Stage).unwrap_err();
+        assert_eq!(err.code, ErrorCode::Io);
     }
 
     #[test]
