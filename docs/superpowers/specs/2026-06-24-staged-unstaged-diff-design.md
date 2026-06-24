@@ -54,7 +54,11 @@ HEAD 없는 신규 repo: 기존 `has_head()` 가드 유지. HEAD 없으면 `git 
 
 ### 2.4 헬퍼
 - 기존 `git_output`, `parse_diff`, `untracked_file_diff`, `current_branch`, `has_head`, `is_inside_repo` 재사용.
-- 파일 내용 첨부 로직을 staged/unstaged 각각에 적용하기 위해, 현재 modified/added는 파일시스템·deleted/renamed는 `git show HEAD:` 를 읽던 부분을 "diff 종류(staged/unstaged) + status"에 따라 §2.3 표대로 분기하도록 일반화한다.
+- 파일 내용 첨부 로직을 staged/unstaged 각각에 적용한다. **§2.3 표가 유일한 권위**이며, 현재의 "modified/added는 파일시스템" 규칙을 그대로 옮기지 않는다. 구체적으로:
+  - **staged 스트림**: `new_text` = **index**(`git show :<path>`), **파일시스템이 아님**. `old_text` = HEAD(`git show HEAD:<old_path 또는 path>`). working tree가 index와 다른 partial-staging에서 staged 블록을 파일시스템 내용으로 강조하면 틀린다 — 반드시 index에서 읽는다.
+  - **unstaged 스트림**: `new_text` = 파일시스템(현재 파일), `old_text` = index(`git show :<path>`).
+  - **rename의 index 조회 경로**: staged `new_text`(index)는 rename-to인 **`f.path`**로 조회한다(`f.old_path` 아님 — index에는 새 경로만 존재). staged `old_text`(HEAD)만 `f.old_path`(있으면)로 조회.
+  - 텍스트 출처 분기는 "diff 종류(staged/unstaged) + status"로 결정하되 위 규칙을 따른다.
 
 ## 3. 데이터 모델 (TypeScript)
 
@@ -68,6 +72,12 @@ export interface GitChanges {
 }
 ```
 `FileDiff`·`Hunk`·`DiffLine` 변경 없음. `gitStore.ts`는 `changes: GitChanges | null` 그대로 유지(구조만 바뀜).
+
+### 3.1 다른 소비자 (`changes.files` 참조처)
+`GitChanges.files` 제거로 깨지는 모든 소비자를 함께 고친다(grep `changes.*files` 확인 결과):
+- **`src/components/ActivityBar.tsx:15`**: 소스컨트롤 배지 카운트 `s.changes?.files.length`. → **머지된 파일 수**로 변경(중복 path 1개): `const files = s.changes; files ? new Set([...files.staged, ...files.unstaged].map(f => f.path)).size : 0`. `staged.length + unstaged.length`는 partial-staging을 중복 카운트하므로 금지.
+- `src/components/DiffView.tsx`: §4에서 전면 개편.
+- `SearchPanel.tsx`의 `response.files`는 **검색 결과**(별개 타입)로 무관 — 건드리지 않음.
 
 ## 4. 프론트엔드 (`DiffView.tsx`)
 
@@ -106,16 +116,17 @@ MergedFile 하나당 렌더 순서:
 2. `merged.staged`가 있으면: `section("Staged")` 행 + 기존 헌크/컨텍스트확장/expander 렌더(staged FileDiff 기준).
 3. `merged.unstaged`가 있으면: `section("Unstaged")` 행 + 헌크/컨텍스트확장 렌더(unstaged FileDiff 기준).
 
-- 파일 접기/펼치기(`collapsed`)는 path 단위 — 접으면 staged·unstaged 블록 둘 다 숨김.
-- 컨텍스트 확장 gapKey가 현재 `${file.path}#${idx}`인데, staged·unstaged가 같은 path라 충돌한다. **gapKey에 섹션 구분 추가**: `${path}#${section}#${idx}` (section = "s" | "u"). `expanded` Map·`expand` 핸들러·`fileGaps` 호출이 섹션별로 독립.
-- 각 섹션의 헌크 렌더는 해당 FileDiff의 `new_text`/`old_text`로 강조(§2.3 출처).
+- **path-keyed 맵 정리**: `collapsed`(접기)는 path 단위 — 접으면 staged·unstaged 블록 둘 다 숨김. `pathToRowIndex`·`fileOffsets`도 path(MergedFile) 단위. path는 머지 키라 MergedFile 간 유일 → 충돌 없음(의도된 설계).
+- 컨텍스트 확장 gapKey만은 path로 부족하다: staged·unstaged가 같은 path라 `${file.path}#${idx}`가 충돌한다. **gapKey에 섹션 구분 추가**: `${path}#${section}#${idx}` (section = "s" | "u"). `expanded` Map·`expand` 핸들러·`fileGaps` 호출이 섹션별로 독립. (`expanded`는 `changes` 리로드 시 초기화되므로 stale 키 우려 없음 — 기존 로직.)
+- 각 섹션의 헌크 렌더는 해당 FileDiff의 `new_text`/`old_text`로 강조(§2.3 출처). staged·unstaged의 `new_text`가 다르므로(index vs 파일시스템) 강조도 각 섹션의 출처로 독립 계산.
+- **binary/too_large 처리**: 한 섹션의 FileDiff가 binary·too_large면 헌크 대신 `info` 행("Binary file not shown" / "File too large to display")을 그 **섹션 블록 내부**에 렌더. 한쪽만 binary일 수 있다(예: staged는 binary, unstaged는 텍스트).
 
 ### 4.4 offset/index 추적
 - `pathToRowIndex`·`fileOffsets`는 **MergedFile 단위(path 기준)**로 추적(기존 FileDiff 단위에서 변경). 파일 목록 클릭 점프·활성 하이라이트(`activeFileForOffset`)는 MergedFile 단위 offset 사용.
-- `top` 누적: section 행 높이(24)와 staged/unstaged 양쪽 헌크·expander·공개 줄 높이를 모두 반영해야 `activeFileForOffset`가 어긋나지 않는다.
+- `top` 누적: section 행 높이(24), staged/unstaged 양쪽 헌크·expander·공개 줄, 그리고 binary/too_large `info` 행(28) 높이를 모두 반영해야 `activeFileForOffset`가 어긋나지 않는다.
 
 ### 4.5 헤더/빈 상태
-- 헤더의 "N changed": `staged.length + unstaged.length`가 아니라 **머지된 파일 수**(MergedFile 개수)로 표기(중복 path 1개로 카운트).
+- 헤더의 "N changed": `staged.length + unstaged.length`가 아니라 **머지된 파일 수**(MergedFile 개수)로 표기(중복 path 1개로 카운트). ActivityBar 배지(§3.1)와 동일한 카운트 규칙.
 - 빈 상태: `staged.length === 0 && unstaged.length === 0` → "No changes".
 
 ## 5. 데이터 흐름
@@ -134,14 +145,17 @@ DiffView 활성/ root 변경 → `gitStore.load(root)` → `git_changes` → `{s
 - **Rust 단위/통합(`git.rs`)**: partial staging(한 파일 일부 `git add` → staged·unstaged 양쪽에 해당 파일); staged 신규 파일(`git add newfile` → staged=added, unstaged 비어있음); staged 후 추가 수정(양쪽 등장, 각 diff 내용 정확); HEAD 없는 repo(staged 빈 배열, untracked는 unstaged); `old_text`/`new_text` 출처 검증(staged의 old_text=HEAD, new_text=index). hermetic git config.
 - **프론트 순수(`mergeFiles.test.ts`)**: path 머지, staged-only/unstaged-only/both 분류, status 우선순위(staged 우선), 순서 보존(staged 먼저, unstaged-only 뒤).
 - **프론트 컴포넌트(`DiffView.test.tsx`)**: partial staging diff → "Staged"·"Unstaged" 섹션 행 둘 다 렌더; staged-only 파일 → "Staged" 섹션만; 파일 목록 S/U/S+U 배지 정확; gapKey 섹션 구분으로 staged/unstaged 컨텍스트 확장 독립. 기존 테스트는 `files` → `staged`/`unstaged` 구조로 업데이트(가상화 stub 재사용).
+- **fixture 마이그레이션(테스트 깨짐 방지)**: `GitChanges` 구조 변경으로 깨지는 fixture를 모두 `files` → `staged`/`unstaged`로 갱신: `src/store/gitStore.test.ts`, `src/components/ActivityBar.test.tsx`(배지 카운트 검증 포함 — 머지 카운트로). 그 외 grep으로 `files:` 잔존 fixture 확인.
 - **수동**: 실제 repo에서 `git add -p`로 partial staging → 양쪽 섹션·배지·문법 강조 확인.
 
 ## 8. 변경 범위
-- `src-tauri/src/git.rs`: `GitChanges` 구조체(staged/unstaged), `compute_changes`(2회 diff + 텍스트 출처 분기), 테스트 추가.
+- `src-tauri/src/git.rs`: `GitChanges` 구조체(staged/unstaged), `compute_changes`(2회 diff + §2.3/§2.4 텍스트 출처 분기), 테스트 추가.
 - `src/api/types.ts`: `GitChanges`(staged/unstaged).
 - `src/lib/mergeFiles.ts`(신설) + `src/lib/mergeFiles.test.ts`.
-- `src/components/DiffView.tsx`: section Row·ROW_H·머지 렌더·gapKey 섹션 구분·offset MergedFile 단위·배지, `DiffView.test.tsx` 업데이트.
-- gitStore 변경 없음(구조만 반영).
+- `src/components/DiffView.tsx`: section Row·ROW_H·머지 렌더·gapKey 섹션 구분·offset MergedFile 단위·배지·섹션 내 binary info 행, `DiffView.test.tsx` 업데이트.
+- `src/components/ActivityBar.tsx`: 배지 카운트를 머지 파일 수로(§3.1), `ActivityBar.test.tsx` fixture·검증 업데이트.
+- `src/store/gitStore.test.ts`: fixture `files` → `staged`/`unstaged`.
+- gitStore 본체 변경 없음(구조만 반영).
 
 ## 9. Non-Goals (재확인)
 diff 뷰에서 직접 stage/unstage 액션 · 탭 전환 UI · 헌크 단위 stage · old_path 기준 rename 머지.
