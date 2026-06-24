@@ -261,6 +261,21 @@ describe("DiffView", () => {
     expect(within(nav).getByTestId("badge-unstaged")).toBeInTheDocument();
   });
 
+  it("omits the unstaged stream badge for an untracked file", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [],
+      unstaged: [
+        { path: "n.ts", old_path: null, status: "untracked", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "n\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "n" }] }] },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    const nav = await screen.findByTestId("diff-file-list");
+    // Status badge already shows "U" (untracked); the stream badge would duplicate it.
+    expect(within(nav).queryByTestId("badge-unstaged")).not.toBeInTheDocument();
+  });
+
   it("expands staged and unstaged context independently", async () => {
     gitChanges.mockResolvedValue({
       is_repo: true,
