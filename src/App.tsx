@@ -11,11 +11,11 @@ import { DiffView } from "./components/DiffView";
 import { ShortcutsModal } from "./components/ShortcutsModal";
 import { InfoIcon, FileIcon } from "./components/icons";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
-import { readFile, writeFile } from "./api/fs";
+import { readFile, writeFile, setWorkspaceRoot } from "./api/fs";
 import { useWorkspaceStore } from "./store/workspaceStore";
 import { languageIdForFile } from "./lib/language";
-import { basename, relativePath } from "./lib/paths";
-import { loadOpenTabs, saveOpenTabs } from "./lib/workspacePersistence";
+import { basename, relativePath, joinPath } from "./lib/paths";
+import { loadOpenTabs, saveOpenTabs, saveWorkspaceRoot } from "./lib/workspacePersistence";
 import { useCursorStore } from "./store/cursorStore";
 import { useGitStore } from "./store/gitStore";
 
@@ -49,6 +49,10 @@ export default function App() {
   const setDirty = useWorkspaceStore((s) => s.setDirty);
   const renameTab = useWorkspaceStore((s) => s.renameTab);
   const closeTabsUnder = useWorkspaceStore((s) => s.closeTabsUnder);
+  const setRoot = useWorkspaceStore((s) => s.setRoot);
+
+  const gitBranch = useGitStore((s) => s.changes?.branch ?? null);
+  const switchingRef = useRef(false);
 
   const activeTab = tabs.find((t) => t.path === activeTabPath) ?? null;
   const openPaths = useMemo(() => tabs.map((t) => t.path), [tabs]);
@@ -89,6 +93,45 @@ export default function App() {
       });
     },
     [openTab, setActive]
+  );
+
+  const switchWorktree = useCallback(
+    async (path: string) => {
+      const store = useWorkspaceStore.getState();
+      const oldRoot = store.root;
+      if (!oldRoot || path === oldRoot || switchingRef.current) return;
+      if (
+        store.tabs.some((t) => t.dirty) &&
+        !confirm("Unsaved changes will be lost. Switch worktree?")
+      )
+        return;
+      switchingRef.current = true;
+      try {
+        // Capture relative paths against the OLD root before re-pointing.
+        const openRel = store.tabs.map((t) => relativePath(oldRoot, t.path));
+        const activeRel = store.activeTabPath
+          ? relativePath(oldRoot, store.activeTabPath)
+          : null;
+
+        await setWorkspaceRoot(path);
+        setRoot(path); // triggers the [root] git-load + FileExplorer re-list
+        saveWorkspaceRoot(path);
+        closeTabsUnder(oldRoot); // clears every tab under the old root
+
+        for (const rel of openRel) {
+          await openFile(joinPath(path, rel)); // missing/binary/large are skipped
+        }
+        if (activeRel) {
+          const target = joinPath(path, activeRel);
+          if (useWorkspaceStore.getState().tabs.some((t) => t.path === target)) {
+            setActive(target);
+          }
+        }
+      } finally {
+        switchingRef.current = false;
+      }
+    },
+    [setRoot, closeTabsUnder, openFile, setActive]
   );
 
   async function restoreTabs(paths: string[], activePath: string | null) {
@@ -215,7 +258,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg-2 text-tx-1 font-sans">
-      <TitleBar title={root ? basename(root) : null} />
+      <TitleBar root={root} branch={gitBranch} onSwitchWorktree={switchWorktree} />
       <div className="flex flex-1 min-h-0">
       <ActivityBar
         activeView={activeView}
