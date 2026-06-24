@@ -260,4 +260,68 @@ describe("DiffView", () => {
     expect(within(nav).getByTestId("badge-staged")).toBeInTheDocument();
     expect(within(nav).getByTestId("badge-unstaged")).toBeInTheDocument();
   });
+
+  it("expands staged and unstaged context independently", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [
+        {
+          path: "a.txt",
+          old_path: null,
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          binary: false,
+          too_large: false,
+          new_text: "s1\ns2\ns3\ns4\ns5x\ns6\ns7\ns8\n",
+          old_text: null,
+          hunks: [
+            {
+              header: "@@ -4,3 +4,3 @@",
+              lines: [
+                { kind: "context", old_no: 4, new_no: 4, text: "s4" },
+                { kind: "del", old_no: 5, new_no: null, text: "s5old" },
+                { kind: "add", old_no: null, new_no: 5, text: "s5x" },
+                { kind: "context", old_no: 6, new_no: 6, text: "s6" },
+              ],
+            },
+          ],
+        },
+      ],
+      unstaged: [
+        {
+          path: "a.txt",
+          old_path: null,
+          status: "modified",
+          additions: 1,
+          deletions: 1,
+          binary: false,
+          too_large: false,
+          new_text: "u1\nu2\nu3\nu4\nu5x\nu6\nu7\nu8\n",
+          old_text: null,
+          hunks: [
+            {
+              header: "@@ -4,3 +4,3 @@",
+              lines: [
+                { kind: "context", old_no: 4, new_no: 4, text: "u4" },
+                { kind: "del", old_no: 5, new_no: null, text: "u5old" },
+                { kind: "add", old_no: null, new_no: 5, text: "u5x" },
+                { kind: "context", old_no: 6, new_no: 6, text: "u6" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    expect(screen.queryByText("s1")).not.toBeInTheDocument();
+    expect(screen.queryByText("u1")).not.toBeInTheDocument();
+    // The staged section renders first, so its expander is the first "expand up".
+    const upButtons = screen.getAllByRole("button", { name: /expand up/i });
+    await userEvent.click(upButtons[0]);
+    expect(await screen.findByText("s1")).toBeInTheDocument();
+    expect(screen.queryByText("u1")).not.toBeInTheDocument();
+  });
 });
