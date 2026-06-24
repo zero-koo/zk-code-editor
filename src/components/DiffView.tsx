@@ -7,6 +7,8 @@ import { getHighlightedLines, clearHighlightCache } from "../lib/diffHighlight";
 import { languageIdForFile } from "../lib/language";
 import { fileGaps, revealGap } from "../lib/diffExpand";
 import { mergeFiles, type MergedFile } from "../lib/mergeFiles";
+import { gitFileAction } from "../api/git";
+import type { FileAction } from "../api/types";
 
 interface Props {
   root: string | null;
@@ -15,7 +17,7 @@ interface Props {
 
 type Row =
   | { kind: "file"; path: string; oldPath: string | null; status: FileDiff["status"]; additions: number; deletions: number }
-  | { kind: "section"; label: "Staged" | "Unstaged" }
+  | { kind: "section"; label: "Staged" | "Unstaged"; path: string; isUntracked: boolean }
   | { kind: "line"; lineKind: "context" | "add" | "del"; oldNo: number | null; newNo: number | null; text: string; langId: string; newText: string | null; oldText: string | null }
   | { kind: "info"; text: string }
   | { kind: "expander"; gapKey: string; canUp: boolean; canDown: boolean; remaining: number };
@@ -38,6 +40,8 @@ export function DiffView({ root, active }: Props) {
   const load = useGitStore((s) => s.load);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Map<string, { top: number; bottom: number }>>(new Map());
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,6 +71,27 @@ export function DiffView({ root, active }: Props) {
       );
       return next;
     });
+  }
+
+  async function onAction(path: string, action: FileAction, isUntracked: boolean) {
+    if (!root) return;
+    if (action === "discard") {
+      const msg = isUntracked
+        ? `Delete untracked file ${path}? This cannot be undone.`
+        : `Discard changes to ${path}? This cannot be undone.`;
+      if (!window.confirm(msg)) return;
+    }
+    setActionError(null);
+    setBusy(true);
+    try {
+      await gitFileAction(root, path, action);
+    } catch (e) {
+      const m = e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e);
+      setActionError(m);
+    } finally {
+      await load(root);
+      setBusy(false);
+    }
   }
 
   const merged = changes ? mergeFiles(changes.staged, changes.unstaged) : [];
@@ -136,12 +161,12 @@ export function DiffView({ root, active }: Props) {
     top += ROW_H.file;
     if (collapsed.has(mf.path)) continue;
     if (mf.staged) {
-      rows.push({ kind: "section", label: "Staged" });
+      rows.push({ kind: "section", label: "Staged", path: mf.path, isUntracked: false });
       top += ROW_H.section;
       emitBody(mf.staged, "s", mf.path);
     }
     if (mf.unstaged) {
-      rows.push({ kind: "section", label: "Unstaged" });
+      rows.push({ kind: "section", label: "Unstaged", path: mf.path, isUntracked: mf.unstaged.status === "untracked" });
       top += ROW_H.section;
       emitBody(mf.unstaged, "u", mf.path);
     }
@@ -164,6 +189,7 @@ export function DiffView({ root, active }: Props) {
     <div className="h-10 shrink-0 flex items-center gap-3 px-3.5 border-b border-bd-2 text-[12.5px] text-tx-2">
       <span className="font-medium text-tx-bright">{changes?.branch ?? "—"}</span>
       <span className="text-tx-3">{changes ? `${merged.length} changed` : ""}</span>
+      {actionError && <span data-testid="diff-action-error" className="text-[11.5px] text-red-400 truncate">{actionError}</span>}
       <span className="flex-1" />
       <button
         onClick={() => root && load(root)}
@@ -197,7 +223,7 @@ export function DiffView({ root, active }: Props) {
                   data-index={vItem.index}
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vItem.size, transform: `translateY(${vItem.start}px)` }}
                 >
-                  {renderRow(row, toggle, expand)}
+                  {renderRow(row, toggle, expand, onAction, busy)}
                 </div>
               );
             })}
@@ -260,7 +286,13 @@ function DiffFileList({
   );
 }
 
-function renderRow(row: Row, toggle: (path: string) => void, expand: (gapKey: string, dir: "up" | "down") => void) {
+function renderRow(
+  row: Row,
+  toggle: (path: string) => void,
+  expand: (gapKey: string, dir: "up" | "down") => void,
+  onAction: (path: string, action: FileAction, isUntracked: boolean) => void,
+  busy: boolean
+) {
   if (row.kind === "file") {
     const label = row.oldPath ? `${row.oldPath} → ${row.path}` : row.path;
     return (
@@ -276,9 +308,18 @@ function renderRow(row: Row, toggle: (path: string) => void, expand: (gapKey: st
     );
   }
   if (row.kind === "section") {
+    const btn = "text-[10.5px] px-1.5 py-0.5 rounded text-tx-2 hover:bg-white/10 hover:text-tx-bright disabled:opacity-40 disabled:hover:bg-transparent";
     return (
-      <div className="h-6 flex items-center px-3 text-[11px] font-medium uppercase tracking-wide text-tx-3 bg-bg-2 border-b border-bd-2">
-        {row.label}
+      <div className="h-6 flex items-center gap-2 px-3 text-[11px] font-medium uppercase tracking-wide text-tx-3 bg-bg-2 border-b border-bd-2">
+        <span className="flex-1">{row.label}</span>
+        {row.label === "Staged" ? (
+          <button disabled={busy} onClick={() => onAction(row.path, "unstage", row.isUntracked)} className={btn}>Unstage</button>
+        ) : (
+          <>
+            <button disabled={busy} onClick={() => onAction(row.path, "stage", row.isUntracked)} className={btn}>Stage</button>
+            <button disabled={busy} onClick={() => onAction(row.path, "discard", row.isUntracked)} className={btn}>Discard</button>
+          </>
+        )}
       </div>
     );
   }

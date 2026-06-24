@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import type { MatcherFunction } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -11,7 +11,11 @@ import type { GitChanges } from "../api/types";
 import { useGitStore } from "../store/gitStore";
 
 const gitChanges = vi.fn();
-vi.mock("../api/git", () => ({ gitChanges: (...a: unknown[]) => gitChanges(...a) }));
+const gitFileAction = vi.fn();
+vi.mock("../api/git", () => ({
+  gitChanges: (...a: unknown[]) => gitChanges(...a),
+  gitFileAction: (...a: unknown[]) => gitFileAction(...a),
+}));
 
 import { DiffView } from "./DiffView";
 
@@ -59,6 +63,8 @@ const multi: GitChanges = {
 
 beforeEach(() => {
   gitChanges.mockReset();
+  gitFileAction.mockReset();
+  gitFileAction.mockResolvedValue(undefined);
   useGitStore.setState({ changes: null, loading: false, error: null });
 });
 
@@ -338,5 +344,99 @@ describe("DiffView", () => {
     await userEvent.click(upButtons[0]);
     expect(await screen.findByText("s1")).toBeInTheDocument();
     expect(screen.queryByText("u1")).not.toBeInTheDocument();
+  });
+
+  it("renders Unstage on the Staged section and Stage/Discard on Unstaged", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "s\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "s" }] }] },
+      ],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    expect(screen.getByRole("button", { name: "Unstage" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stage" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+  });
+
+  it("stages a file and reloads when Stage is clicked", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    const callsBefore = gitChanges.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Stage" }));
+    await waitFor(() => expect(gitFileAction).toHaveBeenCalledWith("/repo", "a.ts", "stage"));
+    await waitFor(() => expect(gitChanges.mock.calls.length).toBeGreaterThan(callsBefore));
+  });
+
+  it("discards only after the user confirms", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(gitFileAction).not.toHaveBeenCalled();
+
+    confirmSpy.mockReturnValue(true);
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(gitFileAction).toHaveBeenCalledWith("/repo", "a.ts", "discard"));
+    confirmSpy.mockRestore();
+  });
+
+  it("shows an inline error when an action fails", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    gitFileAction.mockRejectedValue({ code: "io", message: "git add boom" });
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    await userEvent.click(screen.getByRole("button", { name: "Stage" }));
+    expect(await screen.findByTestId("diff-action-error")).toHaveTextContent("git add boom");
+  });
+
+  it("disables section buttons while an action is in flight", async () => {
+    gitChanges.mockResolvedValue({
+      is_repo: true,
+      branch: "main",
+      staged: [],
+      unstaged: [
+        { path: "a.ts", old_path: null, status: "modified", additions: 1, deletions: 0, binary: false, too_large: false, new_text: "u\n", old_text: null, hunks: [{ header: "@@ -0,0 +1,1 @@", lines: [{ kind: "add", old_no: null, new_no: 1, text: "u" }] }] },
+      ],
+    });
+    let release: () => void = () => {};
+    gitFileAction.mockImplementation(() => new Promise<void>((res) => { release = res; }));
+    render(<DiffView root="/repo" active />);
+    await screen.findByTestId("diff-scroll");
+    await userEvent.click(screen.getByRole("button", { name: "Stage" }));
+    expect(screen.getByRole("button", { name: "Stage" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Stage" })).not.toBeDisabled());
   });
 });
