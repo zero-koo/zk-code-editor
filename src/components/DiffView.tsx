@@ -9,6 +9,7 @@ import { fileGaps, revealGap } from "../lib/diffExpand";
 import { mergeFiles, type MergedFile } from "../lib/mergeFiles";
 import { gitFileAction } from "../api/git";
 import type { FileAction } from "../api/types";
+import { PlusIcon, MinusIcon, DiscardIcon } from "./icons";
 
 interface Props {
   root: string | null;
@@ -307,16 +308,22 @@ function renderRow(
     );
   }
   if (row.kind === "section") {
-    const btn = "text-[10.5px] px-1.5 py-0.5 rounded text-tx-2 hover:bg-white/10 hover:text-tx-bright disabled:opacity-40 disabled:hover:bg-transparent";
+    const btn = "p-1 rounded text-tx-2 hover:bg-white/10 hover:text-tx-bright disabled:opacity-40 disabled:hover:bg-transparent";
     return (
-      <div className="h-6 flex items-center gap-2 px-3 text-[11px] font-medium uppercase tracking-wide text-tx-3 bg-bg-2 border-b border-bd-2">
+      <div className="h-6 flex items-center gap-1 px-3 text-[11px] font-medium uppercase tracking-wide text-tx-3 bg-bg-2 border-b border-bd-2">
         <span className="flex-1">{row.label}</span>
         {row.label === "Staged" ? (
-          <button disabled={busy} onClick={() => onAction(row.path, "unstage", row.isUntracked)} className={btn}>Unstage</button>
+          <button aria-label="Unstage" title="Unstage" disabled={busy} onClick={() => onAction(row.path, "unstage", row.isUntracked)} className={btn}>
+            <MinusIcon size={14} />
+          </button>
         ) : (
           <>
-            <button disabled={busy} onClick={() => onAction(row.path, "stage", row.isUntracked)} className={btn}>Stage</button>
-            <button disabled={busy} onClick={() => onAction(row.path, "discard", row.isUntracked)} className={btn}>Discard</button>
+            <button aria-label="Stage" title="Stage" disabled={busy} onClick={() => onAction(row.path, "stage", row.isUntracked)} className={btn}>
+              <PlusIcon size={14} />
+            </button>
+            <button aria-label="Discard" title="Discard" disabled={busy} onClick={() => onAction(row.path, "discard", row.isUntracked)} className={`${btn} hover:text-red-400`}>
+              <DiscardIcon size={14} />
+            </button>
           </>
         )}
       </div>

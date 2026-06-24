@@ -103,3 +103,25 @@ export const GitBranchIcon = (p: IconProps) => (
     <path d="M18 9a9 9 0 0 1-9 9" />
   </Icon>
 );
+
+// "stage" — add to the index
+export const PlusIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Icon>
+);
+
+// "unstage" — remove from the index
+export const MinusIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+  </Icon>
+);
+
+// "discard" — revert working-tree changes (counter-clockwise undo)
+export const DiscardIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 4v4h4" />
+    <path d="M3 12a9 9 0 1 0 3-7.7L3 8" />
+  </Icon>
+);
