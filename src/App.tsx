@@ -62,12 +62,12 @@ export default function App() {
     setDocs((d) => ({ ...d, [p]: doc }));
 
   const openFile = useCallback(
-    async (path: string) => {
+    async (path: string, activate = true) => {
       setNotice(null);
       // Already open — just focus the tab. Re-reading would round-trip the IPC
       // for nothing and clobber any unsaved edits in that tab with disk contents.
       if (useWorkspaceStore.getState().tabs.some((t) => t.path === path)) {
-        setActive(path);
+        if (activate) setActive(path);
         return;
       }
       let content;
@@ -86,12 +86,15 @@ export default function App() {
         return;
       }
       setDocs((d) => ({ ...d, [path]: content.text }));
-      openTab({
-        path,
-        name: basename(path),
-        languageId: languageIdForFile(path),
-        dirty: false,
-      });
+      openTab(
+        {
+          path,
+          name: basename(path),
+          languageId: languageIdForFile(path),
+          dirty: false,
+        },
+        activate
+      );
     },
     [openTab, setActive]
   );
@@ -120,7 +123,7 @@ export default function App() {
             closeTabsUnder,
             openFile,
             setActive,
-            isTabOpen: (p) => useWorkspaceStore.getState().tabs.some((t) => t.path === p),
+            listOpenPaths: () => useWorkspaceStore.getState().tabs.map((t) => t.path),
           }
         );
       } finally {

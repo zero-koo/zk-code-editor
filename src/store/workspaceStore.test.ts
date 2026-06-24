@@ -30,6 +30,15 @@ describe("workspace store", () => {
     expect(useWorkspaceStore.getState().tabs).toHaveLength(1);
   });
 
+  it("openTab with activate=false appends without changing the active tab", () => {
+    const { openTab } = useWorkspaceStore.getState();
+    openTab({ path: "/p/a.ts", name: "a.ts", languageId: "typescript", dirty: false });
+    openTab({ path: "/p/b.ts", name: "b.ts", languageId: "typescript", dirty: false }, false);
+    const s = useWorkspaceStore.getState();
+    expect(s.tabs.map((t) => t.path)).toEqual(["/p/a.ts", "/p/b.ts"]);
+    expect(s.activeTabPath).toBe("/p/a.ts"); // unchanged by the non-activating open
+  });
+
   it("setDirty flips the flag on the matching tab", () => {
     const { openTab, setDirty } = useWorkspaceStore.getState();
     openTab({ path: "/p/a.ts", name: "a.ts", languageId: "typescript", dirty: false });

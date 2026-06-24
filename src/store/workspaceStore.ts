@@ -11,7 +11,7 @@ interface WorkspaceState {
 
   setRoot: (root: string) => void;
   setActiveView: (view: "explorer" | "search" | "git") => void;
-  openTab: (tab: Tab) => void;
+  openTab: (tab: Tab, activate?: boolean) => void;
   closeTab: (path: string) => void;
   closeTabsUnder: (dir: string) => void;
   setActive: (path: string) => void;
@@ -38,12 +38,15 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setRoot: (root) => set({ root }),
   setActiveView: (view) => set({ activeView: view }),
 
-  openTab: (tab) =>
+  openTab: (tab, activate = true) =>
     set((s) => {
       if (s.tabs.some((t) => t.path === tab.path)) {
-        return { activeTabPath: tab.path };
+        return activate ? { activeTabPath: tab.path } : {};
       }
-      return { tabs: [...s.tabs, tab], activeTabPath: tab.path };
+      return {
+        tabs: [...s.tabs, tab],
+        activeTabPath: activate ? tab.path : s.activeTabPath,
+      };
     }),
 
   closeTab: (path) =>
