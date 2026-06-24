@@ -84,3 +84,9 @@ export interface GitChanges {
   branch: string | null;
   files: FileDiff[];
 }
+
+export interface Worktree {
+  path: string;
+  branch: string | null;
+  is_current: boolean;
+}
