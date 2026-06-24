@@ -343,6 +343,19 @@ enum Stream {
     Unstaged,
 }
 
+/// Reads a git object (`git show <spec>`) as text, or None if the object is
+/// absent, the command fails, or the content is binary/too large.
+fn git_show_text(root: &str, spec: &str) -> Option<String> {
+    let out = git_output(root, &["show", spec]).ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    match classify_bytes(out.stdout) {
+        FileContent::Text(t) => Some(t),
+        _ => None,
+    }
+}
+
 /// Attaches `new_text`/`old_text` to each FileDiff per the staged/unstaged
 /// source matrix (spec §2.3). Text-file content only; failures leave the field
 /// as None (the frontend falls back to plain rendering).
@@ -353,13 +366,7 @@ fn attach_contents(root: &str, root_path: &Path, files: &mut [FileDiff], stream:
             match stream {
                 // staged new side = index version at the (rename-to) path
                 Stream::Staged => {
-                    if let Ok(out) = git_output(root, &["show", &format!(":{}", f.path)]) {
-                        if out.status.success() {
-                            if let FileContent::Text(t) = classify_bytes(out.stdout) {
-                                f.new_text = Some(t);
-                            }
-                        }
-                    }
+                    f.new_text = git_show_text(root, &format!(":{}", f.path));
                 }
                 // unstaged new side = working-tree file
                 Stream::Unstaged => {
@@ -377,13 +384,7 @@ fn attach_contents(root: &str, root_path: &Path, files: &mut [FileDiff], stream:
                 Stream::Staged => format!("HEAD:{r}"),
                 Stream::Unstaged => format!(":{r}"),
             };
-            if let Ok(out) = git_output(root, &["show", &spec]) {
-                if out.status.success() {
-                    if let FileContent::Text(t) = classify_bytes(out.stdout) {
-                        f.old_text = Some(t);
-                    }
-                }
-            }
+            f.old_text = git_show_text(root, &spec);
         }
     }
 }
@@ -622,6 +623,29 @@ mod tests {
         assert!(changes.staged.is_empty());
         let u = changes.unstaged.iter().find(|f| f.path == "u.txt").unwrap();
         assert_eq!(u.status, "untracked");
+    }
+
+    #[test]
+    fn compute_changes_staged_rename_reads_head_old_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path();
+        git(dir, &["init", "-q", "-b", "main"]);
+        git(dir, &["config", "user.email", "t@t.t"]);
+        git(dir, &["config", "user.name", "t"]);
+        git(dir, &["config", "core.excludesFile", "/dev/null"]);
+        git(dir, &["config", "core.hooksPath", "/dev/null"]);
+        std::fs::write(dir.join("old.txt"), "hello\nworld\n").unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "init"]);
+        git(dir, &["mv", "old.txt", "new.txt"]);
+
+        let changes = compute_changes(dir.to_str().unwrap()).unwrap();
+        let staged = changes.staged.iter().find(|f| f.path == "new.txt").unwrap();
+        assert_eq!(staged.status, "renamed");
+        assert_eq!(staged.old_path.as_deref(), Some("old.txt"));
+        // old side resolves via HEAD:old.txt; new side via index :new.txt
+        assert_eq!(staged.old_text.as_deref(), Some("hello\nworld\n"));
+        assert_eq!(staged.new_text.as_deref(), Some("hello\nworld\n"));
     }
 
     #[test]
