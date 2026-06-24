@@ -91,3 +91,5 @@ export interface Worktree {
   branch: string | null;
   is_current: boolean;
 }
+
+export type FileAction = "stage" | "unstage" | "discard";
